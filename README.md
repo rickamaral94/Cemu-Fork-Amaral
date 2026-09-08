@@ -1,66 +1,178 @@
-# **Cemu - Wii U emulator**
+# Cemu Fork Amaral — Wii U no Android ARM64
 
-[![Build Process](https://github.com/cemu-project/Cemu/actions/workflows/build.yml/badge.svg)](https://github.com/cemu-project/Cemu/actions/workflows/build.yml)
-[![Discord](https://img.shields.io/discord/286429969104764928?label=Cemu&logo=discord&logoColor=FFFFFF)](https://discord.gg/5psYsup)
-[![Matrix Server](https://img.shields.io/matrix/cemu:cemu.info?server_fqdn=matrix.cemu.info&label=cemu:cemu.info&logo=matrix&logoColor=FFFFFF)](https://matrix.to/#/#cemu:cemu.info)
+[![Android CI](https://github.com/rickamaral94/Cemu-Fork-Amaral/actions/workflows/android.yml/badge.svg)](https://github.com/rickamaral94/Cemu-Fork-Amaral/actions/workflows/android.yml)
+[![Licença MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE.txt)
 
-This is the code repository of Cemu, a Wii U emulator that is able to run most Wii U games and homebrew in a playable state.
-It's written in C/C++ and is being actively developed with new features and fixes.
+O Cemu Fork Amaral é um fork do [Cemu](https://github.com/cemu-project/Cemu)
+voltado ao Android ARM64. O projeto reutiliza o núcleo consolidado do Cemu e o
+port Android em análise no
+[PR cemu-project/Cemu#1909](https://github.com/cemu-project/Cemu/pull/1909),
+mantendo as adaptações móveis isoladas sempre que possível.
 
-Cemu is currently only available for 64-bit Windows, Linux & macOS devices.
+> **Estado do projeto:** desenvolvimento inicial. Um APK compilar e abrir não
+> significa que todo jogo seja jogável. A meta de cobrir todo o catálogo do Wii
+> U é uma direção de longo prazo, não uma alegação de compatibilidade atual.
 
-### Links:
- - [Open Source Announcement](https://www.reddit.com/r/cemu/comments/wwa22c/cemu_20_announcement_linux_builds_opensource_and/)
- - [Official Website](https://cemu.info)
- - [Compatibility List/Wiki](https://wiki.cemu.info/wiki/Main_Page)
- - [Official Subreddit](https://reddit.com/r/Cemu)
- - [Official Discord](https://discord.gg/5psYsup)
- - [Official Matrix Server](https://matrix.to/#/#cemu:cemu.info)
- - [Setup Guide](https://cemu.cfw.guide)
+## Objetivos
 
-#### Other relevant repositories:
- - [Cemu-Language](https://github.com/cemu-project/Cemu-Language)
- - [Cemu's Community Graphic Packs](https://github.com/cemu-project/cemu_graphic_packs)
+- compatibilidade e correção antes de desempenho;
+- Vulkan como renderizador principal no Android;
+- recompilação PowerPC para AArch64 com fallback seguro;
+- suporte sustentável a Adreno, Turnip e GPUs Mali/Immortalis;
+- frame pacing consistente, baixa latência e consumo controlado;
+- interface adequada a celular, tablet e portáteis Android;
+- sincronização rastreável com o upstream do Cemu;
+- otimizações somente quando acompanhadas por medições reproduzíveis.
 
-## Download
+Recursos como SGSR 2 e geração de quadros permanecerão experimentais e
+desligados por padrão até existirem os dados temporais e testes necessários.
 
-You can download the latest Cemu releases for Windows, Linux and Mac from the [GitHub Releases](https://github.com/cemu-project/Cemu/releases/). For Linux you can also find Cemu on [flathub](https://flathub.org/apps/info.cemu.Cemu).
+## Estado atual
 
-On Windows, Cemu is available both as an installer and in a portable format, where no installation is required besides extracting it in a safe place.
+| Componente | Estado |
+|---|---|
+| ABI | `arm64-v8a` exclusivamente |
+| Android | `minSdk 30`, `targetSdk 35`, `compileSdk 36` |
+| Renderer | Vulkan |
+| JIT | backend AArch64 existente no Cemu |
+| Interface | Jetpack Compose com controles físicos e touchscreen |
+| Armazenamento | Android Storage Access Framework |
+| Drivers customizados | AdrenoTools, global e por jogo, sem root |
+| Graphic packs | base do port Android; integridade/atualização ainda em evolução |
+| Frame pacing móvel | ainda não implementado |
+| SGSR e frame generation | ainda não implementados |
+| Atualizador do aplicativo | ainda não implementado |
 
-The native macOS build is currently purely experimental and should not be considered stable or ready for issue-free gameplay. There are also known issues with degraded performance due to the use of MoltenVK and Rosetta for ARM Macs. We appreciate your patience while we improve Cemu for macOS.
+A auditoria completa, as diferenças em relação ao desktop e o roadmap estão em
+[`docs/android/`](docs/android/).
 
-Pre-2.0 releases can be found on Cemu's [changelog page](https://cemu.info/changelog.html).
+## Compatibilidade
 
-## Build Instructions
+Cada teste deve registrar aparelho, GPU, driver, Android, versão do jogo,
+update/DLC, configuração e versão do emulador. Os únicos estados aceitos são:
 
-To compile Cemu yourself on Windows, Linux or macOS, view [BUILD.md](/BUILD.md).
+- **Não testado**;
+- **Não inicializa**;
+- **Inicializa**;
+- **Menu**;
+- **In-game**;
+- **Jogável**;
+- **Completo**;
+- **Perfeito**.
 
-## Issues
+Nenhum título ou catálogo será anunciado como 100% compatível sem evidências
+reproduzíveis. Consulte a
+[`matriz de testes`](docs/android/TEST_MATRIX.md) antes de enviar resultados.
 
-Issues with the emulator should be filed using [GitHub Issues](https://github.com/cemu-project/Cemu/issues).  
-The old bug tracker can be found at [bugs.cemu.info](https://bugs.cemu.info) and still contains relevant issues and feature suggestions.
+## APKs e releases
 
-## Contributing
+Ainda não há uma release pública estável. O
+[GitHub Actions](https://github.com/rickamaral94/Cemu-Fork-Amaral/actions/workflows/android.yml)
+produz APKs temporários para testes de engenharia. Esses artefatos usam a chave
+debug do Android, expiram e **não** constituem releases oficiais.
 
-Pull requests are very welcome. For easier coordination you can visit the developer discussion channel on [Discord](https://discord.gg/5psYsup) or alternatively the [Matrix Server](https://matrix.to/#/#cemu:cemu.info).
-Before submitting a pull request, please read and follow our code style guidelines listed in [CODING_STYLE.md](/CODING_STYLE.md).
+Quando os gates de release forem atendidos, os canais Stable, Beta e Nightly
+serão publicados exclusivamente nas
+[releases deste fork](https://github.com/rickamaral94/Cemu-Fork-Amaral/releases).
 
-If coding isn't your thing, testing games and making detailed bug reports or updating the (usually outdated) compatibility wiki is also appreciated!
+## Requisitos de execução
 
-Questions about Cemu's software architecture can also be answered on Discord (or through the Matrix bridge).
+- aparelho Android ARM64;
+- Android 11/API 30 ou superior;
+- suporte Vulkan funcional no driver do sistema;
+- conteúdo do Wii U obtido legalmente pelo próprio usuário.
 
-#### AI generated contributions:
+Drivers customizados utilizam o formato AdrenoTools e não alteram o driver
+global do Android. Eles são opcionais, destinados a GPUs Adreno compatíveis e
+podem ser piores que o driver do sistema para determinados jogos. Dispositivos
+Mali/Immortalis continuam usando o driver Vulkan fornecido pelo sistema.
 
-We ask that all code submitted is written and understood by a human. You can use AI for planning, designing, reviewing and for asking questions about the codebase, but the code itself needs to be written by you. As a small exception you can use intellisense-style AI code autocompletion for pure boilerplate code as long as it's only a small part of your submission. To further clarify, when we ask for "human written" that excludes letting an AI write the code and then paraphrasing it. In other words, we are asking for human effort.
+## Conteúdo e uso legal
 
-Why this policy exists:
+Este repositório e seus artefatos não incluem jogos, keys, firmware, arquivos
+proprietários da Nintendo nem outros conteúdos protegidos. O usuário é
+responsável por obter e utilizar seus próprios dumps de acordo com a legislação
+aplicável.
 
-We have relatively low reviewing capacity and requiring human-written code increases the quality and trustworthyness of submitted pull requests. There are also general concerns with AI usage in emulation:
-- LLMs tend to make up solutions that work on the surface but are generally not accurate in the emulation sense
-- There is evidence that LLMs have been trained on leaked proprietary SDKs and we cannot verify the origin of the knowledge. This is especially a problem for core emulation logic
+Não envie conteúdo protegido, dados pessoais ou chaves em issues e relatórios.
 
-Please keep these points in mind when contributing to Cemu. Contributions that do not follow this policy may be rejected.
+## Compilação Android
 
-## License
-Cemu is licensed under [Mozilla Public License 2.0](/LICENSE.txt). Exempt from this are all files in the dependencies directory for which the licenses of the original code apply as well as some individual files in the src folder, as specified in those file headers respectively.
+### Dependências
+
+- Git com suporte a submódulos;
+- Java 21;
+- Android SDK com `compileSdk 36`;
+- Android NDK `29.0.14206865`;
+- CMake 3.25 ou superior;
+- `gettext` e `mono` no ambiente Linux de CI.
+
+### Build local
+
+```bash
+git clone --recursive https://github.com/rickamaral94/Cemu-Fork-Amaral.git
+cd Cemu-Fork-Amaral/src/android
+./gradlew --no-daemon test assembleRelease
+cd ../..
+tools/android/verify-apk.sh src/android/app/build/outputs/apk/release/app-release.apk
+```
+
+Sem uma configuração completa de assinatura, o build `release` local utiliza a
+chave debug apenas para permitir instalação e testes. Uma distribuição pública
+deve usar a chave dedicada do fork e seguir
+[`docs/android/RELEASE_SIGNING.md`](docs/android/RELEASE_SIGNING.md).
+
+O `applicationId` definitivo é `io.github.rickamaral94.cemu`. Builds antigos do
+port com `info.cemu.cemu` são tratados pelo Android como outro aplicativo e não
+são atualizados no lugar.
+
+## Documentação técnica
+
+- [Baseline e commit-base](docs/android/BASELINE.md)
+- [Arquitetura](docs/android/ARCHITECTURE.md)
+- [Matriz desktop versus Android](docs/android/FEATURE_MATRIX.md)
+- [Registro de riscos](docs/android/RISK_REGISTER.md)
+- [Roadmap executável](docs/android/ROADMAP.md)
+- [Matriz de testes](docs/android/TEST_MATRIX.md)
+- [Política de assinatura](docs/android/RELEASE_SIGNING.md)
+- [Sincronização com upstream](docs/android/UPSTREAM_SYNC.md)
+
+## Contribuição
+
+Leia [`AGENTS.md`](AGENTS.md), [`FORK.md`](FORK.md) e
+[`CODING_STYLE.md`](CODING_STYLE.md) antes de alterar o projeto.
+
+Contribuições devem:
+
+- preservar autoria, cabeçalhos e licenças;
+- manter commits pequenos e separados por área;
+- incluir testes para mudanças de correção ou segurança;
+- apresentar métricas antes/depois para otimizações;
+- manter recursos experimentais opcionais e com fallback;
+- evitar código, documentação ou conhecimento derivado de SDKs proprietários
+  vazados.
+
+Correções gerais devem ser estruturadas para possível envio ao upstream. As
+regras próprias do projeto Cemu continuam valendo para contribuições enviadas
+diretamente a ele.
+
+## Projetos e comunidades relacionados
+
+- [Cemu upstream](https://github.com/cemu-project/Cemu)
+- [Site oficial do Cemu](https://cemu.info)
+- [Wiki de compatibilidade do Cemu](https://wiki.cemu.info/wiki/Main_Page)
+- [Graphic Packs oficiais](https://github.com/cemu-project/cemu_graphic_packs)
+- [Cemu-Language](https://github.com/cemu-project/Cemu-Language)
+- [Discord do Cemu](https://discord.gg/5psYsup)
+- [Matrix do Cemu](https://matrix.to/#/#cemu:cemu.info)
+
+## Licença e créditos
+
+O Cemu é desenvolvido originalmente por Exzap, Petergov e colaboradores. O
+port Android usado como base foi desenvolvido por SSimco e demais autores
+preservados no histórico Git.
+
+O código principal é licenciado sob a
+[Mozilla Public License 2.0](LICENSE.txt). Dependências e arquivos com cabeçalhos
+específicos permanecem sujeitos às suas próprias licenças. O uso do nome deste
+fork não altera a autoria nem implica endosso oficial do projeto Cemu.
