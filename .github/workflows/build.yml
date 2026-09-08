@@ -298,7 +298,7 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Build Cemu
+      - name: Test and build Cemu
         env:
           ANDROID_STORE_FILE_BASE64: ${{ secrets.android_store_file_base64 }}
           ANDROID_KEY_STORE_PASSWORD: ${{ secrets.android_key_store_password }}
@@ -318,7 +318,16 @@ jobs:
             echo "No Android signing store file provided. The APK will not be signed with a release key."
           fi
 
-          ./gradlew assembleRelease
+          ./gradlew testReleaseUnitTest assembleRelease
+
+      - name: Verify Android artifact
+        run: |
+          mapfile -t apks < <(find ./src/android/app/build/outputs/apk/release -type f -name '*.apk')
+          if [[ ${#apks[@]} -ne 1 ]]; then
+            echo "Expected exactly one release APK, found ${#apks[@]}" >&2
+            exit 1
+          fi
+          ./tools/android/verify-apk.sh "${apks[0]}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
