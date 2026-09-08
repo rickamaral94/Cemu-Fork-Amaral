@@ -23,7 +23,7 @@ import java.util.Objects
 
 class DocumentsProvider : DocumentsProvider() {
     private val baseDirectory: File by lazy {
-        requireContext().internalFolder()
+        requireContext().internalFolder().canonicalFile
     }
 
     private val applicationName: String by lazy {
@@ -62,7 +62,12 @@ class DocumentsProvider : DocumentsProvider() {
         if (parentDocumentId == null || documentId == null) {
             return false
         }
-        return documentId.startsWith(parentDocumentId)
+        return try {
+            getFile(documentId).canonicalFile.toPath()
+                .startsWith(getFile(parentDocumentId).canonicalFile.toPath())
+        } catch (_: FileNotFoundException) {
+            false
+        }
     }
 
     @Throws(FileNotFoundException::class)
@@ -94,6 +99,9 @@ class DocumentsProvider : DocumentsProvider() {
     @Throws(FileNotFoundException::class)
     override fun deleteDocument(documentId: String) {
         val file = getFile(documentId)
+        if (file == baseDirectory) {
+            throw FileNotFoundException("The provider root cannot be deleted")
+        }
         if (file.isDirectory) {
             deleteFolder(file)
             return
@@ -128,7 +136,7 @@ class DocumentsProvider : DocumentsProvider() {
         val parent = getFile(parentDocumentId)
         val file = getFile(documentId)
 
-        if (!(parent == file || file.parentFile == null || file.parentFile == parent)) {
+        if (file == baseDirectory || file.parentFile != parent) {
             throw FileNotFoundException("Couldn't delete document with ID $documentId")
         }
         if (file.isDirectory) {
@@ -147,6 +155,9 @@ class DocumentsProvider : DocumentsProvider() {
         }
 
         val sourceFile = getFile(documentId)
+        if (sourceFile == baseDirectory) {
+            throw FileNotFoundException("The provider root cannot be renamed")
+        }
         val sourceParentFile = sourceFile.parentFile
             ?: throw FileNotFoundException("Couldn't rename document '$documentId' as it has no parent")
         val destFile = resolve(sourceParentFile, displayName)
@@ -230,7 +241,11 @@ class DocumentsProvider : DocumentsProvider() {
     }
 
     private fun resolve(file: File, other: String): File {
-        return file.toPath().resolve(other).toFile()
+        val resolvedPath = file.toPath().resolve(other).normalize()
+        if (!resolvedPath.startsWith(baseDirectory.toPath())) {
+            throw SecurityException("Resolved document is outside the provider root")
+        }
+        return resolvedPath.toFile()
     }
 
     @Throws(FileNotFoundException::class)
@@ -263,7 +278,7 @@ class DocumentsProvider : DocumentsProvider() {
         while (file.exists()) {
             val newFileName = "$baseName ($noConflictId)$extension"
             noConflictId++
-            file = file.toPath().resolve(newFileName).toFile()
+            file = resolve(originalFile, newFileName)
         }
         return file
     }
@@ -281,8 +296,10 @@ class DocumentsProvider : DocumentsProvider() {
                     or DocumentsContract.Document.FLAG_SUPPORTS_COPY
                     or DocumentsContract.Document.FLAG_SUPPORTS_RENAME)
         }
-        flags = (flags or DocumentsContract.Document.FLAG_SUPPORTS_DELETE
-                or DocumentsContract.Document.FLAG_SUPPORTS_REMOVE)
+        if (localFile != baseDirectory) {
+            flags = (flags or DocumentsContract.Document.FLAG_SUPPORTS_DELETE
+                    or DocumentsContract.Document.FLAG_SUPPORTS_REMOVE)
+        }
         cursor.newRow().apply {
             add(DocumentsContract.Document.COLUMN_DOCUMENT_ID, localDocumentId)
             add(
@@ -315,25 +332,43 @@ class DocumentsProvider : DocumentsProvider() {
                 return mime
             }
         }
-        return "application/octect-stream"
+        return "application/octet-stream"
     }
 
     @Throws(FileNotFoundException::class)
     private fun getFile(documentId: String?): File {
         Objects.requireNonNull(documentId)
-        if (documentId!!.startsWith(ROOT_ID)) {
-            val file = resolve(baseDirectory, documentId.substring(ROOT_ID.length + 1))
-            if (!file.exists()) {
-                throw FileNotFoundException("${file.absolutePath} $documentId not found")
+        val relativePath = when {
+            documentId == ROOT_ID || documentId == "$ROOT_ID/" -> ""
+            documentId!!.startsWith("$ROOT_ID/") -> documentId.substring(ROOT_ID.length + 1)
+            else -> {
+                throw FileNotFoundException("$documentId is not in any known root")
             }
-            return file
-        } else {
+        }
+
+        val file = try {
+            resolve(baseDirectory, relativePath).canonicalFile
+        } catch (exception: IOException) {
+            throw FileNotFoundException("Invalid document ID $documentId: ${exception.message}")
+        } catch (exception: SecurityException) {
             throw FileNotFoundException("$documentId is not in any known root")
         }
+        if (!file.toPath().startsWith(baseDirectory.toPath()) || !file.exists()) {
+            throw FileNotFoundException("$documentId not found")
+        }
+        return file
     }
 
     private fun getDocumentId(file: File): String {
-        return ROOT_ID + "/" + baseDirectory.toPath().relativize(file.toPath()).toString()
+        val canonicalFile = file.canonicalFile
+        if (!canonicalFile.toPath().startsWith(baseDirectory.toPath())) {
+            throw SecurityException("Document is outside the provider root")
+        }
+        val relativePath = baseDirectory.toPath()
+            .relativize(canonicalFile.toPath())
+            .toString()
+            .replace(File.separatorChar, '/')
+        return if (relativePath.isEmpty()) "$ROOT_ID/" else "$ROOT_ID/$relativePath"
     }
 
     companion object {
