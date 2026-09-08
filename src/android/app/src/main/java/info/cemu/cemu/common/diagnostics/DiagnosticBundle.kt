@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-const val DIAGNOSTIC_SCHEMA_VERSION = 1
+const val DIAGNOSTIC_SCHEMA_VERSION = 2
 const val MAX_DIAGNOSTIC_LOG_BYTES = 4L * 1024L * 1024L
 
 @Serializable
@@ -71,6 +71,7 @@ data class DiagnosticSettingsInfo(
 @Serializable
 data class DiagnosticLogInfo(
     val included: Boolean,
+    val source: String? = null,
     val sourceBytes: Long,
     val includedBytes: Int,
     val truncated: Boolean,

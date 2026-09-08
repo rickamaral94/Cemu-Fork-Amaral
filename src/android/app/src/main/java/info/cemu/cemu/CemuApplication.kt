@@ -2,6 +2,8 @@ package info.cemu.cemu
 
 import android.app.Application
 import info.cemu.cemu.common.android.context.internalFolder
+import info.cemu.cemu.common.diagnostics.archivePreviousSessionLogs
+import info.cemu.cemu.common.diagnostics.compactArchivedSessionLogs
 import info.cemu.cemu.common.settings.AppSettingsStore
 import info.cemu.cemu.common.ui.localization.setLanguage
 import info.cemu.cemu.common.ui.localization.setTranslations
@@ -22,10 +24,17 @@ import java.io.IOException
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.util.regex.Pattern
+import kotlin.concurrent.thread
 
 class CemuApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+
+        val userDataDirectory = internalFolder()
+        runCatching { archivePreviousSessionLogs(userDataDirectory) }
+        thread(name = "session-log-archive", isDaemon = true) {
+            runCatching { compactArchivedSessionLogs(userDataDirectory) }
+        }
 
         configureExceptionHandler()
 
