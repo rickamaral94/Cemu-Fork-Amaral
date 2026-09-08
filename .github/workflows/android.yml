@@ -91,7 +91,7 @@ jobs:
           tools/android/verify-apk.sh "${apks[0]}"
 
       - name: Upload verified APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cemu-fork-amaral-arm64-${{ github.sha }}
           path: src/android/app/build/outputs/apk/release/*.apk
