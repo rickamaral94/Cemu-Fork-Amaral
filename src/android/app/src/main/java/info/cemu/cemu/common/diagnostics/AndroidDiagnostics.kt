@@ -124,12 +124,13 @@ fun tryShareDiagnosticBundle(context: Context, diagnosticBundle: File): Boolean 
             DocumentsProvider.AUTHORITY,
             "${DocumentsProvider.ROOT_ID}/$relativePath",
         )
-        val intent = Intent(Intent.ACTION_SEND)
-            .setType("application/zip")
-            .setClipData(ClipData.newRawUri(canonicalBundle.name, fileUri))
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            .putExtra(Intent.EXTRA_STREAM, fileUri)
-            .putExtra(Intent.EXTRA_SUBJECT, canonicalBundle.name)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            clipData = ClipData.newRawUri(canonicalBundle.name, fileUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            putExtra(Intent.EXTRA_STREAM, fileUri)
+            putExtra(Intent.EXTRA_SUBJECT, canonicalBundle.name)
+        }
 
         context.startActivity(Intent.createChooser(intent, null))
         true
