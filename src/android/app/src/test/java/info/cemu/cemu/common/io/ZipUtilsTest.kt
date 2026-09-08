@@ -101,14 +101,15 @@ class ZipUtilsTest {
     }
 
     @Test
-    fun `does not overwrite duplicate entries`() {
+    fun `does not overwrite an existing file`() {
         val targetDir = Files.createTempDirectory("cemu-zip-test")
 
         try {
+            Files.write(targetDir.resolve("duplicate"), byteArrayOf(1))
+
             assertThrows(Exception::class.java) {
                 unzip(
                     stream = zipOf(
-                        "duplicate" to byteArrayOf(1),
                         "duplicate" to byteArrayOf(2),
                     ).inputStream(),
                     targetDir = targetDir,
