@@ -47,6 +47,12 @@ O fluxo de teste do usuário não depende de computador, ADB ou root:
    **Compartilhar pacote de diagnóstico**;
 6. anexar o ZIP ao relato e informar os defeitos observados.
 
+Para validar ciclo de vida, durante uma sessão ativa pressione Home, aguarde 30
+segundos, retorne ao jogo e repita o ciclo cinco vezes. Faça também um bloqueio e
+desbloqueio de tela. Aprovado significa: áudio e jogo não avançam em segundo
+plano, a imagem retorna sem tela preta, controles respondem, o áudio não duplica
+e o save continua carregável.
+
 O ZIP contém um `report.json` versionado com dados do app, aparelho, tela,
 driver selecionado e configurações gráficas não sensíveis. Quando disponível,
 inclui até os 4 MiB mais recentes de `log.txt`, com redação automática de e-mail,
