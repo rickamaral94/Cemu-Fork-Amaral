@@ -7,6 +7,38 @@
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanAPI.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
 
+namespace
+{
+const char* PresentModeToString(VkPresentModeKHR presentMode)
+{
+	switch (presentMode)
+	{
+	case VK_PRESENT_MODE_IMMEDIATE_KHR:
+		return "Immediate";
+	case VK_PRESENT_MODE_MAILBOX_KHR:
+		return "Mailbox";
+	case VK_PRESENT_MODE_FIFO_KHR:
+		return "FIFO";
+	case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+		return "FIFO relaxed";
+	default:
+		return "Unknown";
+	}
+}
+
+std::string PresentModesToString(const std::vector<VkPresentModeKHR>& presentModes)
+{
+	std::string result;
+	for (const auto presentMode : presentModes)
+	{
+		if (!result.empty())
+			result += ", ";
+		result += PresentModeToString(presentMode);
+	}
+	return result;
+}
+}
+
 SwapchainInfoVk::SwapchainInfoVk(bool mainWindow, Vector2i size) : mainWindow(mainWindow), m_desiredExtent(size)
 {
 	auto& windowHandleInfo = mainWindow ? WindowSystem::GetWindowInfo().canvas_main : WindowSystem::GetWindowInfo().canvas_pad;
@@ -384,19 +416,21 @@ VkPresentModeKHR SwapchainInfoVk::ChoosePresentMode(const std::vector<VkPresentM
 {
 	m_maxQueued = 0;
 	const auto vsyncState = (VSync)GetConfig().vsync.GetValue();
+	VkPresentModeKHR selectedMode = VK_PRESENT_MODE_FIFO_KHR;
+	bool usedFallback = false;
 	if (vsyncState == VSync::MAILBOX)
 	{
 		if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_MAILBOX_KHR) != modes.cend())
-			return VK_PRESENT_MODE_MAILBOX_KHR;
-
-		cemuLog_log(LogType::Force, "Vulkan: Can't find mailbox present mode");
+			selectedMode = VK_PRESENT_MODE_MAILBOX_KHR;
+		else
+			usedFallback = true;
 	}
 	else if (vsyncState == VSync::Immediate)
 	{
 		if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_IMMEDIATE_KHR) != modes.cend())
-			return VK_PRESENT_MODE_IMMEDIATE_KHR;
-
-		cemuLog_log(LogType::Force, "Vulkan: Can't find immediate present mode");
+			selectedMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+		else
+			usedFallback = true;
 	}
 	else if (vsyncState == VSync::SYNC_AND_LIMIT)
 	{
@@ -406,11 +440,23 @@ VkPresentModeKHR SwapchainInfoVk::ChoosePresentMode(const std::vector<VkPresentM
 		//	return VK_PRESENT_MODE_IMMEDIATE_KHR;
 		//else
 		//	cemuLog_log(LogType::Force, "Vulkan: Present mode 'immediate' not available. Vsync might not behave as intended");
-		return VK_PRESENT_MODE_FIFO_KHR;
 	}
 
-	m_maxQueued = 1;
-	return VK_PRESENT_MODE_FIFO_KHR;
+	if (selectedMode == VK_PRESENT_MODE_FIFO_KHR && vsyncState != VSync::SYNC_AND_LIMIT)
+		m_maxQueued = 1;
+
+	const char* requestedMode = "FIFO";
+	if (vsyncState == VSync::MAILBOX)
+		requestedMode = "Mailbox";
+	else if (vsyncState == VSync::Immediate)
+		requestedMode = "Immediate";
+	else if (vsyncState == VSync::SYNC_AND_LIMIT)
+		requestedMode = "Sync and limit";
+
+	cemuLog_log(LogType::Force,
+		"Vulkan: Present mode requested={} selected={} available=[{}] fallback={}",
+		requestedMode, PresentModeToString(selectedMode), PresentModesToString(modes), usedFallback);
+	return selectedMode;
 }
 
 VkSwapchainCreateInfoKHR SwapchainInfoVk::CreateSwapchainCreateInfo(VkSurfaceKHR surface, const SwapchainSupportDetails& swapchainSupport, const VkSurfaceFormatKHR& surfaceFormat, uint32 imageCount, const VkExtent2D& extent)
@@ -443,6 +489,5 @@ VkSwapchainCreateInfoKHR SwapchainInfoVk::CreateSwapchainCreateInfo(VkSurfaceKHR
 	createInfo.presentMode = ChoosePresentMode(swapchainSupport.presentModes);
 	createInfo.clipped = VK_TRUE;
 
-	cemuLog_logDebug(LogType::Force, "vulkan presentation mode: {}", createInfo.presentMode);
 	return createInfo;
 }
