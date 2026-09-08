@@ -73,6 +73,8 @@ class EmulationViewModel(
     private val launchPath: String,
     private val dataStore: DataStore<AppSettings> = AppSettingsStore.dataStore
 ) : ViewModel() {
+    private val lifecycleController = EmulationLifecycleController()
+
     private val _emulationError = MutableStateFlow<NativeError?>(null)
     val emulationError = _emulationError.asStateFlow()
 
@@ -155,43 +157,57 @@ class EmulationViewModel(
                 }
 
                 NativeEmulation.setSurface(surfaceHolder.surface, isMainCanvas)
-                val mainSurfaceWasDestroyed = destroyedSurfaces.get(isMain = true)
-
-                if (mainSurfaceWasDestroyed && isMainCanvas) {
-                    NativeEmulation.resumeTitle()
-                }
 
                 setSurfaces.set(isMainCanvas, true)
 
+                val mainSurfaceWasDestroyed = destroyedSurfaces.get(isMain = true)
                 val padSurfaceWasSet = setSurfaces.get(isMain = false)
                 if ((!isMainCanvas && !mainSurfaceWasDestroyed) || (isMainCanvas && padSurfaceWasSet)) {
                     NativeEmulation.initializeSurface(isMainCanvas = false)
                 }
 
                 destroyedSurfaces.set(isMainCanvas, false)
+                if (isMainCanvas) {
+                    applyLifecycleCommand(lifecycleController.onMainSurfaceAvailable())
+                }
             } catch (exception: NativeException) {
                 _emulationError.value = NativeError.SurfaceCreationError(exception.message!!)
             }
         }
 
         override fun surfaceDestroyed(surfaceHolder: SurfaceHolder) {
-            if (setSurfaces.get(isMain = false)) {
+            if (!isMainCanvas && setSurfaces.get(isMain = false)) {
                 NativeEmulation.clearPadSurface()
                 setSurfaces.set(isMain = false, false)
                 destroyedSurfaces.set(isMain = false, true)
             }
 
             if (isMainCanvas) {
-                NativeEmulation.pauseTitle()
-
                 setSurfaces.set(isMain = true, false)
                 destroyedSurfaces.set(isMain = true, true)
+                applyLifecycleCommand(lifecycleController.onMainSurfaceDestroyed())
             }
         }
     }
 
     val mainHolderCallback: SurfaceHolder.Callback = CanvasSurfaceHolderCallback(true)
     val padHolderCallback: SurfaceHolder.Callback = CanvasSurfaceHolderCallback(false)
+
+    fun onActivityResumed() {
+        applyLifecycleCommand(lifecycleController.onActivityResumed())
+    }
+
+    fun onActivityPaused() {
+        applyLifecycleCommand(lifecycleController.onActivityPaused())
+    }
+
+    private fun applyLifecycleCommand(command: EmulationLifecycleCommand?) {
+        when (command) {
+            EmulationLifecycleCommand.PAUSE -> NativeEmulation.pauseTitle()
+            EmulationLifecycleCommand.RESUME -> NativeEmulation.resumeTitle()
+            null -> Unit
+        }
+    }
 
     private suspend fun initializeSystems() = attemptWithContext(Dispatchers.IO) {
         NativeEmulation.initializeSystems()
@@ -234,9 +250,13 @@ class EmulationViewModel(
                 .bind { initializeSystems() }
                 .bind { initializeRenderer() }
                 .bind { launchTitle() }
-                .onError { _emulationError.value = it }
-
-            _isEmulationInitialized.value = true
+                .fold(
+                    onSuccess = {
+                        applyLifecycleCommand(lifecycleController.onTitleLaunched())
+                        _isEmulationInitialized.value = true
+                    },
+                    onError = { _emulationError.value = it },
+                )
         }
     }
 
