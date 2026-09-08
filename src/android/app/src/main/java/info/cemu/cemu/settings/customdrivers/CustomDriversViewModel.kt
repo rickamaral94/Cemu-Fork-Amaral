@@ -12,6 +12,7 @@ import info.cemu.cemu.common.customdrivers.META_FILE_NAME
 import info.cemu.cemu.common.customdrivers.SUPPORTED_SCHEMA_VERSION
 import info.cemu.cemu.common.customdrivers.getCustomDriversDir
 import info.cemu.cemu.common.customdrivers.parseInstalledDrivers
+import info.cemu.cemu.common.io.ZipExtractionLimits
 import info.cemu.cemu.common.io.decodeJsonFromFile
 import info.cemu.cemu.common.io.unzip
 import info.cemu.cemu.nativeinterface.NativeActiveSettings
@@ -86,7 +87,15 @@ class CustomDriversViewModel : ViewModel() {
                 tempDir.createDirectories()
 
                 context.contentResolver.openInputStream(driverZipUri)?.use {
-                    unzip(it, tempDir)
+                    unzip(
+                        stream = it,
+                        targetDir = tempDir,
+                        limits = ZipExtractionLimits(
+                            maxEntries = 64,
+                            maxEntryUncompressedBytes = 128L * 1024 * 1024,
+                            maxTotalUncompressedBytes = 256L * 1024 * 1024,
+                        ),
+                    )
                 }
 
                 val metadata =
