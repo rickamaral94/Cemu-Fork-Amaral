@@ -177,13 +177,17 @@ std::string get_custom_driver_lib_name(const fs::path& driver_path)
 	rapidjson::Document doc;
 	doc.ParseStream(str);
 
-	if (!doc.HasMember(LIB_NAME_MEMBER) || !doc[LIB_NAME_MEMBER].IsString())
+	if (doc.HasParseError() || !doc.IsObject() || !doc.HasMember(LIB_NAME_MEMBER) || !doc[LIB_NAME_MEMBER].IsString())
 		return {};
 
 	std::string lib_name = doc[LIB_NAME_MEMBER].GetString();
+	const fs::path relative_lib_path{lib_name};
+	if (lib_name.empty() || lib_name.find('/') != std::string::npos || lib_name.find('\\') != std::string::npos ||
+		relative_lib_path.is_absolute() || relative_lib_path.has_parent_path() || relative_lib_path.extension() != ".so")
+		return {};
 
 	std::error_code ec;
-	if (!fs::exists(driver_path / lib_name, ec))
+	if (!fs::is_regular_file(driver_path / relative_lib_path, ec))
 		return {};
 
 	return lib_name;
@@ -219,7 +223,14 @@ void* load_custom_driver()
 		return nullptr;
 
 	std::error_code ec;
-	fs::copy(fs::path(driver_path.value()) / driver_name, ActiveSettings::GetInternalPath(CUSTOM_DRIVER_LIB_NAME), fs::copy_options::overwrite_existing, ec);
+	const auto internal_driver_path = ActiveSettings::GetInternalPath(CUSTOM_DRIVER_LIB_NAME);
+	fs::copy_file(fs::path(driver_path.value()) / driver_name, internal_driver_path,
+		fs::copy_options::overwrite_existing, ec);
+	if (ec)
+	{
+		cemuLog_log(LogType::Force, "Failed to stage custom driver: {}", ec.message());
+		return nullptr;
+	}
 
 	void* vulkan_so = adrenotools_open_libvulkan(
 		RTLD_NOW | RTLD_LOCAL,

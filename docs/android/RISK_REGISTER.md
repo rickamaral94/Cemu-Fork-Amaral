@@ -15,3 +15,7 @@
 | R-11 | aquecimento invalida benchmark curto | Alta | Médio | sessões longas, AB/BA e gate térmico |
 | R-12 | asset/proveniência incompatível | Média | Crítico | SBOM, revisão de licença e autoria por integração |
 
+## Estado das mitigações
+
+- **R-03 — parcialmente mitigado:** a extração de ZIP canonicaliza caminhos, impõe limites de entradas e bytes, não sobrescreve arquivos e possui testes de regressão. Pacotes de driver também validam tamanho do metadata, schema, API mínima, nome simples da biblioteca e cabeçalho ELF AArch64 antes da instalação e novamente antes de serem listados. Assinatura/proveniência do pacote ainda é pendência; portanto o risco não está encerrado.
+- **R-04 — aberto:** a falha ao preparar a biblioteca agora interrompe o carregamento e mantém o fallback para o driver do sistema, mas modo seguro, recuperação persistente e detecção de `VK_ERROR_DEVICE_LOST` ainda não foram implementados.

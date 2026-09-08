@@ -9,8 +9,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import info.cemu.cemu.common.customdrivers.DriverMetadata
 import info.cemu.cemu.common.customdrivers.META_FILE_NAME
-import info.cemu.cemu.common.customdrivers.SUPPORTED_SCHEMA_VERSION
 import info.cemu.cemu.common.customdrivers.getCustomDriversDir
+import info.cemu.cemu.common.customdrivers.isDriverPackageCompatible
+import info.cemu.cemu.common.customdrivers.isValidDriverMetadataFile
 import info.cemu.cemu.common.customdrivers.parseInstalledDrivers
 import info.cemu.cemu.common.io.ZipExtractionLimits
 import info.cemu.cemu.common.io.decodeJsonFromFile
@@ -28,7 +29,6 @@ import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteRecursively
-import kotlin.io.path.exists
 import kotlin.io.path.moveTo
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -60,7 +60,7 @@ class CustomDriversViewModel : ViewModel() {
         viewModelScope.launch {
             val selectedDriver = selectedDriverPath.value
 
-            _installedDrivers.value = parseInstalledDrivers().map {
+            _installedDrivers.value = parseInstalledDrivers(Build.VERSION.SDK_INT).map {
                 Driver(
                     it.path,
                     it.metadata,
@@ -98,12 +98,14 @@ class CustomDriversViewModel : ViewModel() {
                     )
                 }
 
-                val metadata =
-                    decodeJsonFromFile<DriverMetadata>(tempDir.resolve(META_FILE_NAME).toFile())
+                val metadataPath = tempDir.resolve(META_FILE_NAME)
+                val metadata = if (isValidDriverMetadataFile(metadataPath)) {
+                    decodeJsonFromFile<DriverMetadata>(metadataPath.toFile())
+                } else {
+                    null
+                }
                 if (metadata == null
-                    || metadata.minApi > Build.VERSION.SDK_INT
-                    || metadata.schemaVersion != SUPPORTED_SCHEMA_VERSION
-                    || !tempDir.resolve(metadata.libraryName).exists()
+                    || !isDriverPackageCompatible(tempDir, metadata, Build.VERSION.SDK_INT)
                 ) {
                     tempDir.deleteRecursively()
                     onInstallFinished(DriverInstallStatus.ErrorInstalling)

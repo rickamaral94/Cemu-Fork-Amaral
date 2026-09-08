@@ -1,5 +1,6 @@
 package info.cemu.cemu.games.profile
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -55,7 +56,7 @@ class GameProfileEditViewModel(val game: Game) : ViewModel() {
 
         val systemDriverSetting = DriverSettingChoice(DriverSettingMode.SYSTEM)
 
-        val installedDrivers = parseInstalledDrivers().map {
+        val installedDrivers = parseInstalledDrivers(Build.VERSION.SDK_INT).map {
             val data = CustomDriverData(it.path, it.metadata.name)
             DriverSettingChoice(
                 DriverSettingMode.CUSTOM,
