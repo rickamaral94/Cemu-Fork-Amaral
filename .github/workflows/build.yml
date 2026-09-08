@@ -318,7 +318,7 @@ jobs:
             echo "No Android signing store file provided. The APK will not be signed with a release key."
           fi
 
-          ./gradlew testReleaseUnitTest assembleRelease
+          ./gradlew test assembleRelease
 
       - name: Verify Android artifact
         run: |
