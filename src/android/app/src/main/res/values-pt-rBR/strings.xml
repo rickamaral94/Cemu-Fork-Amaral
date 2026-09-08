@@ -1,0 +1,10 @@
+<resources>
+    <string name="diagnostic_share_action">Compartilhar pacote de diagnóstico</string>
+    <string name="diagnostic_creating">Criando pacote de diagnóstico</string>
+    <string name="diagnostic_share_title">Compartilhar pacote de diagnóstico</string>
+    <string name="diagnostic_share_description">O pacote contém informações do aplicativo, aparelho, gráficos e configurações não sensíveis, além do log do Cemu com dados comuns removidos quando disponível. Ele não inclui jogos, keys, firmware ou saves.</string>
+    <string name="diagnostic_cancel">Cancelar</string>
+    <string name="diagnostic_share">Compartilhar</string>
+    <string name="diagnostic_create_failed">Não foi possível criar o pacote de diagnóstico</string>
+    <string name="diagnostic_share_failed">Não foi possível compartilhar o pacote de diagnóstico</string>
+</resources>

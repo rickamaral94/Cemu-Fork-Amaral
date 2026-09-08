@@ -51,26 +51,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import info.cemu.cemu.R
+import info.cemu.cemu.common.diagnostics.createAndroidDiagnosticBundle
+import info.cemu.cemu.common.diagnostics.tryShareDiagnosticBundle
 import info.cemu.cemu.common.ui.components.FilledSearchToolbar
 import info.cemu.cemu.common.ui.extensions.showMessage
 import info.cemu.cemu.common.ui.localization.tr
 import info.cemu.cemu.games.GameIcon
-import info.cemu.cemu.nativeinterface.NativeActiveSettings
 import info.cemu.cemu.nativeinterface.NativeGameTitles
 import info.cemu.cemu.nativeinterface.NativeGameTitles.Game
 import info.cemu.cemu.provider.DocumentsProvider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.File
 import androidx.compose.material3.DropdownMenuItem as MaterialDropdownMenuItem
 
 @Composable
@@ -89,6 +89,8 @@ fun GamesListScreen(
     val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
+    var showDiagnosticShareConfirmation by rememberSaveable { mutableStateOf(false) }
+    var diagnosticExportInProgress by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val gameSearchQuery by gamesListViewModel.filterText.collectAsStateWithLifecycle()
     val games by gamesListViewModel.games.collectAsStateWithLifecycle()
@@ -125,22 +127,10 @@ fun GamesListScreen(
                                 )
                             }
                         },
-                        shareLogFile = {
-                            if (!logFileExists()) {
-                                snackbarHostState.showMessage(
-                                    coroutineScope,
-                                    tr("Log file doesn't exist")
-                                )
-                                return@GameListToolBarActionsMenu
-                            }
-
-                            if (!tryShareLogFile(context)) {
-                                snackbarHostState.showMessage(
-                                    coroutineScope,
-                                    tr("Failed to open log file")
-                                )
-                            }
+                        shareDiagnosticBundle = {
+                            showDiagnosticShareConfirmation = true
                         },
+                        diagnosticExportInProgress = diagnosticExportInProgress,
                     )
                 },
                 hint = tr("Search games"),
@@ -194,6 +184,50 @@ fun GamesListScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+
+    if (showDiagnosticShareConfirmation) {
+        AlertDialog(
+            title = { Text(stringResource(R.string.diagnostic_share_title)) },
+            text = {
+                Text(stringResource(R.string.diagnostic_share_description))
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiagnosticShareConfirmation = false }) {
+                    Text(stringResource(R.string.diagnostic_cancel))
+                }
+            },
+            onDismissRequest = { showDiagnosticShareConfirmation = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDiagnosticShareConfirmation = false
+                        diagnosticExportInProgress = true
+                        coroutineScope.launch {
+                            val diagnosticBundle = createAndroidDiagnosticBundle(context)
+                                .getOrElse {
+                                    diagnosticExportInProgress = false
+                                    snackbarHostState.showMessage(
+                                        coroutineScope,
+                                        context.getString(R.string.diagnostic_create_failed)
+                                    )
+                                    return@launch
+                                }
+
+                            diagnosticExportInProgress = false
+                            if (!tryShareDiagnosticBundle(context, diagnosticBundle)) {
+                                snackbarHostState.showMessage(
+                                    coroutineScope,
+                                    context.getString(R.string.diagnostic_share_failed)
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.diagnostic_share))
+                }
+            },
+        )
     }
 }
 
@@ -388,7 +422,8 @@ private fun GameContextMenu(
 @Composable
 private fun GameListToolBarActionsMenu(
     openCemuFolder: () -> Unit,
-    shareLogFile: () -> Unit,
+    shareDiagnosticBundle: () -> Unit,
+    diagnosticExportInProgress: Boolean,
     goToSettings: () -> Unit,
     goToTitleManager: () -> Unit,
     goToGraphicPacks: () -> Unit,
@@ -397,8 +432,9 @@ private fun GameListToolBarActionsMenu(
     var expandMenu by remember { mutableStateOf(false) }
 
     @Composable
-    fun DropdownMenuItem(onClick: () -> Unit, text: String) {
+    fun DropdownMenuItem(onClick: () -> Unit, text: String, enabled: Boolean = true) {
         MaterialDropdownMenuItem(
+            enabled = enabled,
             onClick = {
                 onClick()
                 expandMenu = false
@@ -437,41 +473,18 @@ private fun GameListToolBarActionsMenu(
             text = tr("Open Cemu folder")
         )
         DropdownMenuItem(
-            onClick = shareLogFile,
-            text = tr("Share log file"),
+            onClick = shareDiagnosticBundle,
+            text = if (diagnosticExportInProgress) {
+                stringResource(R.string.diagnostic_creating)
+            } else {
+                stringResource(R.string.diagnostic_share_action)
+            },
+            enabled = !diagnosticExportInProgress,
         )
         DropdownMenuItem(
             onClick = goToAboutCemu,
             text = tr("About Cemu"),
         )
-    }
-}
-
-private const val LOG_FILE_NAME = "log.txt"
-
-private fun logFileExists(): Boolean {
-    return File(NativeActiveSettings.getUserDataPath()).resolve(LOG_FILE_NAME).isFile
-}
-
-private fun tryShareLogFile(context: Context): Boolean {
-    try {
-        val fileUri = DocumentsContract.buildDocumentUri(
-            DocumentsProvider.AUTHORITY,
-            DocumentsProvider.ROOT_ID + "/$LOG_FILE_NAME"
-        )
-
-        val documentFile = DocumentFile.fromSingleUri(context, fileUri)!!
-
-        val intent = Intent(Intent.ACTION_SEND)
-            .setDataAndType(documentFile.uri, "text/plain")
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            .putExtra(Intent.EXTRA_STREAM, documentFile.uri)
-
-        context.startActivity(Intent.createChooser(intent, null))
-
-        return true
-    } catch (_: Exception) {
-        return false
     }
 }
 

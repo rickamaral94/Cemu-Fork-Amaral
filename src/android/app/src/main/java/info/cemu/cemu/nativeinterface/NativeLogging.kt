@@ -6,4 +6,7 @@ object NativeLogging {
 
     @JvmStatic
     external fun crashLog(stacktrace: String?)
+
+    @JvmStatic
+    external fun waitForFlush()
 }

@@ -72,21 +72,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Validate Android support scripts
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -x tools/android/device-smoke-test.sh
-          bash -n tools/android/device-smoke-test.sh
-          bash -n tools/android/verify-apk.sh
-
-          set +e
-          tools/android/device-smoke-test.sh > smoke-usage.txt 2>&1
-          smoke_status=$?
-          set -e
-          test "$smoke_status" -eq 2
-          grep -q '^Usage:' smoke-usage.txt
-
       - name: Run tests and build release APK
         working-directory: src/android
         run: ./gradlew --no-daemon test assembleRelease --stacktrace

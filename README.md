@@ -126,19 +126,15 @@ O `applicationId` definitivo é `io.github.rickamaral94.cemu`. Builds antigos do
 port com `info.cemu.cemu` são tratados pelo Android como outro aplicativo e não
 são atualizados no lugar.
 
-### Smoke test em aparelho físico
+### Validação e diagnóstico no Android
 
-Com `adb` e `apkanalyzer` disponíveis e um único aparelho ARM64 autorizado:
+Depois de testar um jogo ou homebrew no aparelho, abra o menu de três pontos da
+biblioteca e selecione **Compartilhar pacote de diagnóstico**. O próprio app cria
+e compartilha um ZIP com versão, dispositivo, driver, configurações não sensíveis
+e o log do Cemu com redação automática de caminhos e identificadores comuns.
 
-```bash
-SMOKE_DURATION_SECONDS=30 \
-  tools/android/device-smoke-test.sh \
-  src/android/app/build/outputs/apk/release/app-release.apk
-```
-
-O teste preserva os dados instalados, abre a tela principal, monitora o processo
-e grava evidências em `artifacts/android-smoke/`. Ele não substitui testes com
-homebrew público ou dumps legais.
+O fluxo não requer computador, ADB ou root. O pacote não inclui jogos, keys,
+firmware ou saves e somente sai do aparelho após confirmação do usuário.
 
 ## Documentação técnica
 

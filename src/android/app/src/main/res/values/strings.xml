@@ -3,4 +3,12 @@
     <string name="cemu_original_authors" translatable="false">Exzap, Petergov</string>
     <string name="cemu_website" translatable="false">https://cemu.info</string>
     <string name="cemu_online_guide" translatable="false">https://cemu.info/online-guide</string>
+    <string name="diagnostic_share_action">Share diagnostic package</string>
+    <string name="diagnostic_creating">Creating diagnostic package</string>
+    <string name="diagnostic_share_title">Share diagnostic package</string>
+    <string name="diagnostic_share_description">The package contains app, device, graphics and non-sensitive settings information, plus a redacted Cemu log when available. It does not include games, keys, firmware or saves.</string>
+    <string name="diagnostic_cancel">Cancel</string>
+    <string name="diagnostic_share">Share</string>
+    <string name="diagnostic_create_failed">Failed to create diagnostic package</string>
+    <string name="diagnostic_share_failed">Failed to share diagnostic package</string>
 </resources>

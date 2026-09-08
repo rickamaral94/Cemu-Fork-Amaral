@@ -1,4 +1,5 @@
 #include "Common/ExceptionHandler/ExceptionHandler.h"
+#include "Cemu/Logging/CemuLogging.h"
 #include "JNIUtils.h"
 
 extern "C" [[maybe_unused]] JNIEXPORT void JNICALL
@@ -14,4 +15,10 @@ Java_info_cemu_cemu_nativeinterface_NativeLogging_crashLog(JNIEnv* env, [[maybe_
 		return; // give up if crashlog was already created
 	CrashLog_WriteLine("Unhandled exception from java code");
 	CrashLog_WriteLine(JNIUtils::FromJString(env, stacktrace));
+}
+
+extern "C" [[maybe_unused]] JNIEXPORT void JNICALL
+Java_info_cemu_cemu_nativeinterface_NativeLogging_waitForFlush([[maybe_unused]] JNIEnv* env, [[maybe_unused]] jclass clazz)
+{
+	cemuLog_waitForFlush();
 }

@@ -35,34 +35,27 @@ hardware dentro do escopo testado; ausência de relato não é evidência.
 
 ROMs, keys, firmware e conteúdo Nintendo não entram no repositório ou no CI.
 
-## Smoke test em aparelho ARM64
+## Validação no próprio aparelho Android
 
-Com `adb` e `apkanalyzer` do Android SDK disponíveis, o script
-`tools/android/device-smoke-test.sh` valida, sem apagar dados do aplicativo:
+O fluxo de teste do usuário não depende de computador, ADB ou root:
 
-1. dispositivo autorizado, API 30+, ABI `arm64-v8a` e recurso Vulkan;
-2. ABI, biblioteca nativa, `applicationId` e `versionCode` do APK antes da
-   instalação;
-3. instalação com atualização preservando dados (`adb install -r`);
-4. inicialização da `MainActivity` e permanência do processo pelo intervalo
-   configurado;
-5. ausência de exceção fatal, sinal fatal ou ANR no log do processo.
+1. instalar o APK e confirmar que a biblioteca abre;
+2. iniciar homebrew público ou dump obtido legalmente;
+3. validar vídeo, áudio, controle, save e carregamento;
+4. testar por tempo suficiente para observar stutter, aquecimento e vazamentos;
+5. retornar à biblioteca, abrir o menu de três pontos e selecionar
+   **Compartilhar pacote de diagnóstico**;
+6. anexar o ZIP ao relato e informar os defeitos observados.
 
-Exemplo:
+O ZIP contém um `report.json` versionado com dados do app, aparelho, tela,
+driver selecionado e configurações gráficas não sensíveis. Quando disponível,
+inclui até os 4 MiB mais recentes de `log.txt`, com redação automática de e-mail,
+URI, caminhos Android, endereços IP e MAC. Jogos, keys, firmware, saves, serial do
+aparelho e Android ID não são adicionados.
 
-```bash
-SMOKE_DURATION_SECONDS=30 \
-  tools/android/device-smoke-test.sh app-release.apk artifacts/smoke-odin2
-```
-
-O diretório de evidência contém hash do APK, commit, informações técnicas sem o
-serial do aparelho, saída de instalação/inicialização e `logcat` restrito ao
-processo do fork. O script encerra o processo ao final, mas não desinstala o app
-nem limpa seus dados.
-
-Esse smoke cobre instalação e inicialização da interface. A etapa 1C somente
-será encerrada depois de também executar homebrew público ou teste legal em
-aparelho físico e registrar o resultado.
+O aplicativo mantém no máximo os cinco pacotes mais recentes em sua pasta de
+diagnósticos. Nada é enviado automaticamente: o compartilhamento sempre depende
+de confirmação explícita no seletor do Android.
 
 ## Método de performance
 
