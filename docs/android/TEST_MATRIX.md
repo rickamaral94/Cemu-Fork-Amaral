@@ -35,9 +35,37 @@ hardware dentro do escopo testado; ausência de relato não é evidência.
 
 ROMs, keys, firmware e conteúdo Nintendo não entram no repositório ou no CI.
 
+## Smoke test em aparelho ARM64
+
+Com `adb` e `apkanalyzer` do Android SDK disponíveis, o script
+`tools/android/device-smoke-test.sh` valida, sem apagar dados do aplicativo:
+
+1. dispositivo autorizado, API 30+, ABI `arm64-v8a` e recurso Vulkan;
+2. ABI, biblioteca nativa, `applicationId` e `versionCode` do APK antes da
+   instalação;
+3. instalação com atualização preservando dados (`adb install -r`);
+4. inicialização da `MainActivity` e permanência do processo pelo intervalo
+   configurado;
+5. ausência de exceção fatal, sinal fatal ou ANR no log do processo.
+
+Exemplo:
+
+```bash
+SMOKE_DURATION_SECONDS=30 \
+  tools/android/device-smoke-test.sh app-release.apk artifacts/smoke-odin2
+```
+
+O diretório de evidência contém hash do APK, commit, informações técnicas sem o
+serial do aparelho, saída de instalação/inicialização e `logcat` restrito ao
+processo do fork. O script encerra o processo ao final, mas não desinstala o app
+nem limpa seus dados.
+
+Esse smoke cobre instalação e inicialização da interface. A etapa 1C somente
+será encerrada depois de também executar homebrew público ou teste legal em
+aparelho físico e registrar o resultado.
+
 ## Método de performance
 
 Usar AB/BA, aquecimento controlado, no mínimo cinco repetições quando o teste for
 curto e uma sessão prolongada para vazamentos/throttling. Reportar mediana e
 dispersão; não aprovar mudança apenas pelo FPS médio.
-

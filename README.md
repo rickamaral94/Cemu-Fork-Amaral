@@ -126,6 +126,20 @@ O `applicationId` definitivo é `io.github.rickamaral94.cemu`. Builds antigos do
 port com `info.cemu.cemu` são tratados pelo Android como outro aplicativo e não
 são atualizados no lugar.
 
+### Smoke test em aparelho físico
+
+Com `adb` e `apkanalyzer` disponíveis e um único aparelho ARM64 autorizado:
+
+```bash
+SMOKE_DURATION_SECONDS=30 \
+  tools/android/device-smoke-test.sh \
+  src/android/app/build/outputs/apk/release/app-release.apk
+```
+
+O teste preserva os dados instalados, abre a tela principal, monitora o processo
+e grava evidências em `artifacts/android-smoke/`. Ele não substitui testes com
+homebrew público ou dumps legais.
+
 ## Documentação técnica
 
 - [Baseline e commit-base](docs/android/BASELINE.md)
