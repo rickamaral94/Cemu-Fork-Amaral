@@ -51,6 +51,10 @@ android {
         versionName = getVersionName()
         versionCode = 1
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     androidResources {
@@ -131,8 +135,6 @@ android {
                         )
                     )
                 }
-                // abiFilters("arm64-v8a", "x86_64")
-                abiFilters("arm64-v8a")
             }
         }
     }
