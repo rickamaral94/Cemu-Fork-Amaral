@@ -176,7 +176,8 @@ namespace NativeEmulation
 			m_surface = env->NewGlobalRef(localSurface);
 
 			m_window = ANativeWindow_fromSurface(env, m_surface);
-			ANativeWindow_acquire(m_window);
+			if (m_window == nullptr)
+				throw std::runtime_error("Failed to obtain native test window");
 
 			env->DeleteLocalRef(localSurfaceTexture);
 			env->DeleteLocalRef(localSurface);
@@ -276,12 +277,12 @@ Java_info_cemu_cemu_nativeinterface_NativeEmulation_setSurface(JNIEnv* env, [[ma
 {
 	JNIUtils::HandleNativeException(env, [&]() {
 		auto& windowHandleInfo = isMainCanvas ? WindowSystem::GetWindowInfo().canvas_main : WindowSystem::GetWindowInfo().canvas_pad;
-		auto oldWindow = windowHandleInfo.surface.load();
+		auto newWindow = ANativeWindow_fromSurface(env, surface);
+		if (newWindow == nullptr)
+			throw std::runtime_error("Failed to obtain native window from Android surface");
+		auto oldWindow = windowHandleInfo.surface.exchange(newWindow);
 		if (oldWindow != nullptr)
 			ANativeWindow_release(static_cast<ANativeWindow*>(oldWindow));
-		auto newSurface = ANativeWindow_fromSurface(env, surface);
-		ANativeWindow_acquire(newSurface);
-		windowHandleInfo.surface = newSurface;
 		windowHandleInfo.surface.notify_all();
 	});
 }
