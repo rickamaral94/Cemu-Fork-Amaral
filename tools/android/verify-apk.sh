@@ -60,7 +60,9 @@ if [[ "${VERIFY_APK_SIGNATURE:-0}" == "1" ]]; then
     signature_output=$("$apksigner_path" verify --verbose --print-certs "$apk_path")
     printf '%s\n' "$signature_output"
     certificate_sha256=$(printf '%s\n' "$signature_output" \
-        | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest: //p' \
+        | sed -n \
+            -e 's/^[[:space:]]*Signer #1 certificate SHA-256 digest: //p' \
+            -e 's/^[[:space:]]*V[0-9.]* Signer: certificate SHA-256 digest: //p' \
         | head -n 1 \
         | tr '[:upper:]' '[:lower:]' \
         | tr -d ':')
