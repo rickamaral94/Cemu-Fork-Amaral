@@ -37,7 +37,7 @@ class DiagnosticBundleTest {
     @Test
     fun limitsIncludedLogToMostRecentBytes() {
         val logFile = temporaryFolder.newFile("log.txt")
-        logFile.writeText("old-data-new-data")
+        logFile.writeText("old-data\nnew-data")
 
         val prepared = prepareDiagnosticLog(logFile, maxBytes = 8)
 

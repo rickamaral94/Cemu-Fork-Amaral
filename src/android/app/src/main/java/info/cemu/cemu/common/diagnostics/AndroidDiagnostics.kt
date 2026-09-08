@@ -37,7 +37,7 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
             val selectedDriver = selectedDriverPath?.let { path ->
                 parseInstalledDrivers(Build.VERSION.SDK_INT).firstOrNull { it.path == path }
             }
-            val displayMode = context.display?.mode
+            val displayMode = context.display.mode
             val memoryInfo = ActivityManager.MemoryInfo().also { info ->
                 context.getSystemService(ActivityManager::class.java).getMemoryInfo(info)
             }
@@ -58,9 +58,9 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                     securityPatch = Build.VERSION.SECURITY_PATCH,
                     supportedAbis = Build.SUPPORTED_ABIS.toList(),
                     totalMemoryBytes = memoryInfo.totalMem,
-                    displayWidthPixels = displayMode?.physicalWidth,
-                    displayHeightPixels = displayMode?.physicalHeight,
-                    displayRefreshRateHz = displayMode?.refreshRate,
+                    displayWidthPixels = displayMode.physicalWidth,
+                    displayHeightPixels = displayMode.physicalHeight,
+                    displayRefreshRateHz = displayMode.refreshRate,
                 ),
                 graphics = DiagnosticGraphicsInfo(
                     driverMode = when {
@@ -100,10 +100,7 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                 diagnosticDirectory,
                 "$DIAGNOSTIC_FILE_PREFIX$timestamp$DIAGNOSTIC_FILE_SUFFIX",
             )
-            val reportJson = Json {
-                prettyPrint = true
-                encodeDefaults = true
-            }.encodeToString(report)
+            val reportJson = DIAGNOSTIC_JSON.encodeToString(report)
 
             writeDiagnosticBundle(destination, reportJson, preparedLog)
             deleteOldBundles(diagnosticDirectory, keep = MAX_RETAINED_BUNDLES)
@@ -174,3 +171,8 @@ private fun deleteOldBundles(directory: File, keep: Int) {
 private val DIAGNOSTIC_FILENAME_FORMATTER =
     DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
         .withZone(ZoneOffset.UTC)
+
+private val DIAGNOSTIC_JSON = Json {
+    prettyPrint = true
+    encodeDefaults = true
+}
