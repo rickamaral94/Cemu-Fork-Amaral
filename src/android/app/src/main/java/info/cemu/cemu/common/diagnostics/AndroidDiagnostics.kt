@@ -31,8 +31,11 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
         runCatching {
             NativeLogging.waitForFlush()
 
-            val logFile = File(NativeActiveSettings.getUserDataPath(), "log.txt")
-            val preparedLog = prepareDiagnosticLog(logFile)
+            val userDataDirectory = File(NativeActiveSettings.getUserDataPath())
+            val selectedLog = selectDiagnosticLog(userDataDirectory)
+            val preparedLog = prepareDiagnosticLog(
+                selectedLog?.file ?: userDataDirectory.resolve(CURRENT_LOG_FILE_NAME),
+            )
             val selectedDriverPath = NativeSettings.getCustomDriverPath()
             val selectedDriver = selectedDriverPath?.let { path ->
                 parseInstalledDrivers(Build.VERSION.SDK_INT).firstOrNull { it.path == path }
@@ -87,6 +90,7 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                 ),
                 log = DiagnosticLogInfo(
                     included = preparedLog.content != null,
+                    source = selectedLog?.source,
                     sourceBytes = preparedLog.sourceBytes,
                     includedBytes = preparedLog.includedBytes,
                     truncated = preparedLog.truncated,

@@ -25,6 +25,7 @@ import info.cemu.cemu.emulation.input.DeviceMotionHandler
 import info.cemu.cemu.emulation.input.HotkeyManager
 import info.cemu.cemu.emulation.input.InputHandler
 import info.cemu.cemu.emulation.input.NativeInputDeviceListener
+import info.cemu.cemu.nativeinterface.NativeLogging
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -170,6 +171,7 @@ class EmulationActivity : AppCompatActivity() {
     }
 
     private fun onQuit() {
+        NativeLogging.waitForFlush()
         finish()
         exitProcess(0)
     }

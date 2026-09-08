@@ -55,7 +55,9 @@ e o save continua carregável.
 
 O ZIP contém um `report.json` versionado com dados do app, aparelho, tela,
 driver selecionado e configurações gráficas não sensíveis. Quando disponível,
-inclui até os 4 MiB mais recentes de `log.txt`, com redação automática de e-mail,
+inclui até 4 MiB do log mais relevante: sessão atual com jogo, sessão anterior
+com jogo/crash ou última sessão de jogo preservada. O campo `log.source` informa
+qual origem foi escolhida. O log aplica redação automática de e-mail,
 URI, caminhos Android, endereços IP e MAC. Jogos, keys, firmware, saves, serial do
 aparelho e Android ID não são adicionados.
 
