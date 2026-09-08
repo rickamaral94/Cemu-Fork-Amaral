@@ -57,7 +57,26 @@ if [[ "${VERIFY_APK_SIGNATURE:-0}" == "1" ]]; then
         echo "apksigner is required to verify the APK signature" >&2
         exit 1
     fi
-    "$apksigner_path" verify --verbose "$apk_path"
+    signature_output=$("$apksigner_path" verify --verbose --print-certs "$apk_path")
+    printf '%s\n' "$signature_output"
+    certificate_sha256=$(printf '%s\n' "$signature_output" \
+        | sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest: //p' \
+        | head -n 1 \
+        | tr '[:upper:]' '[:lower:]' \
+        | tr -d ':')
+
+    if [[ -n "${EXPECTED_CERT_SHA256:-}" ]]; then
+        expected_certificate_sha256=$(printf '%s' "$EXPECTED_CERT_SHA256" \
+            | tr '[:upper:]' '[:lower:]' \
+            | tr -d ':')
+        if [[ -z "$certificate_sha256" || "$certificate_sha256" != "$expected_certificate_sha256" ]]; then
+            echo "Unexpected APK signing certificate: ${certificate_sha256:-not-found}" >&2
+            exit 1
+        fi
+    fi
+elif [[ -n "${EXPECTED_CERT_SHA256:-}" ]]; then
+    echo "VERIFY_APK_SIGNATURE=1 is required when EXPECTED_CERT_SHA256 is set" >&2
+    exit 1
 fi
 
 if [[ -n "${EXPECTED_APPLICATION_ID:-}" ]]; then
@@ -80,7 +99,8 @@ if [[ -n "${EXPECTED_APPLICATION_ID:-}" ]]; then
     fi
 fi
 
-printf 'Verified %s: arm64-v8a only, CemuAndroid native library present, application ID %s, versionCode %s\n' \
+printf 'Verified %s: arm64-v8a only, CemuAndroid native library present, application ID %s, versionCode %s, certificate SHA-256 %s\n' \
     "$apk_path" \
     "${EXPECTED_APPLICATION_ID:-not-checked}" \
-    "${version_code:-not-checked}"
+    "${version_code:-not-checked}" \
+    "${certificate_sha256:-not-checked}"

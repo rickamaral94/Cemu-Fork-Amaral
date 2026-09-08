@@ -140,6 +140,13 @@ android {
                 signingConfigs.getByName("debug")
             }
         }
+        create("nightly") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".nightly"
+            versionNameSuffix = "-nightly"
+            resValue("string", "app_name", "Cemu Fork Amaral Nightly")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     externalNativeBuild {

@@ -126,6 +126,11 @@ O `applicationId` definitivo é `io.github.rickamaral94.cemu`. Builds antigos do
 port com `info.cemu.cemu` são tratados pelo Android como outro aplicativo e não
 são atualizados no lugar.
 
+Os artefatos automáticos do CI usam o canal Nightly, com identificador
+`io.github.rickamaral94.cemu.nightly` e assinatura pública de teste estável. Eles
+podem ser atualizados entre si e ficam separados da futura instalação Stable,
+assinada exclusivamente com a chave offline do projeto.
+
 ### Validação e diagnóstico no Android
 
 Depois de testar um jogo ou homebrew no aparelho, abra o menu de três pontos da

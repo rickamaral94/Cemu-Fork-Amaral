@@ -72,28 +72,44 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run tests and build release APK
-        working-directory: src/android
-        run: ./gradlew --no-daemon test assembleRelease --stacktrace
+      - name: Prepare stable public nightly signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_keystore="$RUNNER_TEMP/cemu-fork-amaral-nightly.p12"
+          base64 --decode .github/ci/cemu-fork-amaral-test.p12.base64 > "$test_keystore"
+          chmod 600 "$test_keystore"
+          {
+            echo "ANDROID_STORE_FILE=$test_keystore"
+            echo "ANDROID_KEY_STORE_PASSWORD=android"
+            echo "ANDROID_KEY_ALIAS=cemu-ci-test"
+            echo "ANDROID_KEY_PASSWORD=android"
+            echo "ANDROID_REQUIRE_RELEASE_SIGNING=true"
+          } >> "$GITHUB_ENV"
 
-      - name: Verify release APK
+      - name: Run tests and build nightly APK
+        working-directory: src/android
+        run: ./gradlew --no-daemon test assembleNightly --stacktrace
+
+      - name: Verify nightly APK
         env:
-          EXPECTED_APPLICATION_ID: io.github.rickamaral94.cemu
+          EXPECTED_APPLICATION_ID: io.github.rickamaral94.cemu.nightly
+          EXPECTED_CERT_SHA256: b73ad9604837f278f7027d61dc42fbc655ec22eaf68fbec7d2c61eaac5547f7e
           VERIFY_APK_SIGNATURE: "1"
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t apks < <(find src/android/app/build/outputs/apk/release -type f -name '*.apk')
+          mapfile -t apks < <(find src/android/app/build/outputs/apk/nightly -type f -name '*.apk')
           if [[ ${#apks[@]} -ne 1 ]]; then
-            echo "Expected exactly one release APK, found ${#apks[@]}" >&2
+            echo "Expected exactly one nightly APK, found ${#apks[@]}" >&2
             exit 1
           fi
           tools/android/verify-apk.sh "${apks[0]}"
 
-      - name: Upload verified APK
+      - name: Upload verified nightly APK
         uses: actions/upload-artifact@v6
         with:
-          name: cemu-fork-amaral-arm64-${{ github.sha }}
-          path: src/android/app/build/outputs/apk/release/*.apk
+          name: cemu-fork-amaral-nightly-arm64-${{ github.sha }}
+          path: src/android/app/build/outputs/apk/nightly/*.apk
           if-no-files-found: error
           retention-days: 14

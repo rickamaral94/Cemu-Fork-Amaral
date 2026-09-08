@@ -6,10 +6,16 @@ O identificador definitivo do aplicativo é `io.github.rickamaral94.cemu`. A
 chave de release é dedicada ao fork, fica fora do repositório e deve possuir ao
 menos duas cópias de recuperação criptografadas sob custódia do mantenedor.
 
-O GitHub Actions comum produz somente APK de teste assinado com a chave debug.
-Uma release pública deverá usar um ambiente GitHub protegido, exigir aprovação
-manual e definir `ANDROID_REQUIRE_RELEASE_SIGNING=true`. O job deve falhar se a
-configuração estiver ausente ou incompleta.
+O GitHub Actions comum produz somente o aplicativo Nightly
+`io.github.rickamaral94.cemu.nightly`. Ele usa uma chave pública de teste estável
+para permitir atualização entre builds Nightly sem remover o app. Essa chave
+está deliberadamente no repositório, não representa confiança e nunca pode
+assinar o aplicativo Stable.
+
+Uma release pública deverá usar o identificador `io.github.rickamaral94.cemu`,
+um ambiente GitHub protegido, aprovação manual e a chave offline. O job deve
+definir `ANDROID_REQUIRE_RELEASE_SIGNING=true` e falhar se a configuração estiver
+ausente ou incompleta.
 
 ## Criação e custódia
 
@@ -32,9 +38,11 @@ Registre separadamente o SHA-256 do certificado:
 keytool -list -v -keystore cemu-fork-amaral-release.jks
 ```
 
-Nunca faça commit do `.jks`, das senhas ou de sua representação Base64. A perda
-da chave impede atualizações confiáveis das instalações existentes; sua troca
-exige um plano explícito de migração.
+Nunca faça commit do `.jks` de **release**, das senhas ou de sua representação
+Base64. A perda da chave impede atualizações confiáveis das instalações Stable;
+sua troca exige um plano explícito de migração. A única exceção é a chave
+explicitamente pública de Nightly em `.github/ci/`, que não pode ser reutilizada
+em releases.
 
 ## Variáveis de build
 
@@ -50,6 +58,10 @@ exige um plano explícito de migração.
 Sem `EMULATOR_VERSION_CODE`, builds de desenvolvimento usam a contagem de
 commits do Git como fallback monotônico. Releases sempre devem fornecer o valor
 explicitamente e registrar o certificado e os hashes dos artefatos.
+
+O CI também compara o SHA-256 do certificado Nightly com o valor registrado no
+workflow. Uma troca dessa chave deve ser tratada como migração incompatível e
+documentada antes de publicar outro APK.
 
 ## Migração da identidade antiga
 
