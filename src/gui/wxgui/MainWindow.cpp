@@ -377,6 +377,9 @@ MainWindow::MainWindow()
 	{
 			g_gdbstub = std::make_unique<GDBServer>(GetConfig().gdb_port);
 	}
+
+	if (LaunchSettings::OpenDebuggerEnabled())
+		OpenPPCDebugger();
 }
 
 MainWindow::~MainWindow()
@@ -1190,6 +1193,14 @@ void MainWindow::OnDebugViewPPCDebugger(wxCommandEvent& event)
 		return;
 	}
 
+	OpenPPCDebugger();
+}
+
+void MainWindow::OpenPPCDebugger()
+{
+	if (m_debugger_window)
+		return;
+
 	auto rect = GetDesktopRect();
 	/*
 	sint32 new_width = max(rect.GetWidth() * 0.70, rect.GetWidth() - 850);
@@ -1790,7 +1801,9 @@ void MainWindow::SetMenuVisible(bool state)
 	if (m_menu_visible == state)
 		return;
 
+#if !BOOST_OS_MACOS
 	SetMenuBar(state ? m_menuBar : nullptr);
+#endif
 	m_menu_visible = state;
 }
 
@@ -2311,6 +2324,7 @@ void MainWindow::RecreateMenu()
 	logCosModulesMenu->AppendCheckItem(MAINFRAME_MENU_ID_DEBUG_LOGGING0 + stdx::to_underlying(LogType::Socket), _("nsysnet API"))->Check(cemuLog_isLoggingEnabled(LogType::Socket));
 	logCosModulesMenu->AppendCheckItem(MAINFRAME_MENU_ID_DEBUG_LOGGING0 + stdx::to_underlying(LogType::H264), _("h264 API"))->Check(cemuLog_isLoggingEnabled(LogType::H264));
 	logCosModulesMenu->AppendCheckItem(MAINFRAME_MENU_ID_DEBUG_LOGGING0 + stdx::to_underlying(LogType::GX2), _("gx2 API"))->Check(cemuLog_isLoggingEnabled(LogType::GX2));
+	logCosModulesMenu->AppendCheckItem(MAINFRAME_MENU_ID_DEBUG_LOGGING0 + stdx::to_underlying(LogType::SWKBD), _("swkbd API"))->Check(cemuLog_isLoggingEnabled(LogType::SWKBD));
 	logCosModulesMenu->AppendCheckItem(MAINFRAME_MENU_ID_DEBUG_LOGGING0 + stdx::to_underlying(LogType::SoundAPI), _("Audio API"))->Check(cemuLog_isLoggingEnabled(LogType::SoundAPI));
 	logCosModulesMenu->AppendCheckItem(MAINFRAME_MENU_ID_DEBUG_LOGGING0 + stdx::to_underlying(LogType::InputAPI), _("Input API"))->Check(cemuLog_isLoggingEnabled(LogType::InputAPI));
 

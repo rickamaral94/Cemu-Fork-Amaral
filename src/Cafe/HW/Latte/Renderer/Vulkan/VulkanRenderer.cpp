@@ -575,6 +575,7 @@ VulkanRenderer::VulkanRenderer() : Renderer(RendererAPI::Vulkan)
 	const bool has_device_set = config.vk_graphic_device_uuid != zero;
 
 	VkPhysicalDevice fallbackDevice = VK_NULL_HANDLE;
+	std::string fallbackDeviceName = "";
 
 	std::vector<VkPhysicalDevice> devices(device_count);
 	vkEnumeratePhysicalDevices(m_instance, &device_count, devices.data());
@@ -582,21 +583,25 @@ VulkanRenderer::VulkanRenderer() : Renderer(RendererAPI::Vulkan)
 	{
 		if (IsDeviceSuitable(surface, device))
 		{
+			VkPhysicalDeviceIDProperties physDeviceIDProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES };
+			VkPhysicalDeviceProperties2 physDeviceProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+			physDeviceProps.pNext = &physDeviceIDProps;
+			vkGetPhysicalDeviceProperties2(device, &physDeviceProps);
+
 			if (fallbackDevice == VK_NULL_HANDLE)
+			{
 				fallbackDevice = device;
+				fallbackDeviceName = physDeviceProps.properties.deviceName;
+			}
 
 			if (has_device_set)
 			{
-				VkPhysicalDeviceIDProperties physDeviceIDProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES };
-				VkPhysicalDeviceProperties2 physDeviceProps = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-				physDeviceProps.pNext = &physDeviceIDProps;
-				vkGetPhysicalDeviceProperties2(device, &physDeviceProps);
-
 				if (memcmp(config.vk_graphic_device_uuid.data(), physDeviceIDProps.deviceUUID, VK_UUID_SIZE) != 0)
 					continue;
 			}
 
 			m_physicalDevice = device;
+			m_selectedDeviceName = physDeviceProps.properties.deviceName;
 			break;
 		}
 	}
@@ -605,6 +610,7 @@ VulkanRenderer::VulkanRenderer() : Renderer(RendererAPI::Vulkan)
 	{
 		cemuLog_log(LogType::Force, "The selected GPU could not be found or is not suitable. Falling back to first available device instead");
 		m_physicalDevice = fallbackDevice;
+		m_selectedDeviceName = fallbackDeviceName;
 		config.vk_graphic_device_uuid = {}; // resetting device selection
 	}
 	else if (m_physicalDevice == VK_NULL_HANDLE)
@@ -672,7 +678,9 @@ VulkanRenderer::VulkanRenderer() : Renderer(RendererAPI::Vulkan)
 		deviceFeatures.robustBufferAccess = VK_TRUE;
 	}
 
-	deviceFeatures.vertexPipelineStoresAndAtomics = true;
+	deviceFeatures.vertexPipelineStoresAndAtomics = deviceFeatures2.features.vertexPipelineStoresAndAtomics;
+	if (!deviceFeatures.vertexPipelineStoresAndAtomics)
+		cemuLog_log(LogType::Force, "vertexPipelineStoresAndAtomics not supported by the driver. Games which use the streamout feature will not render correctly");
 
 	void* deviceExtensionFeatures = nullptr;
 
@@ -2185,8 +2193,7 @@ void VulkanRenderer::ProcessFinishedCommandBuffers()
 			// not signaled
 			break;
 		}
-		cemuLog_log(LogType::Force, "vkGetFenceStatus returned unexpected error {}", (sint32)fenceStatus);
-		cemu_assert_debug(false);
+		UnrecoverableError(fmt::format("vkGetFenceStatus returned unexpected error {}", (sint32)fenceStatus).c_str());
 	}
 	if (finishedCmdBuffers)
 	{
@@ -2205,7 +2212,7 @@ void VulkanRenderer::WaitForNextFinishedCommandBuffer()
 	}
 	else if (result != VK_SUCCESS)
 	{
-		cemuLog_log(LogType::Force, "vkWaitForFences: Returned unhandled error {}", (sint32)result);
+		UnrecoverableError(fmt::format("vkWaitForFences: Returned unhandled error {}", (sint32)result).c_str());
 	}
 	// process
 	ProcessFinishedCommandBuffers();
