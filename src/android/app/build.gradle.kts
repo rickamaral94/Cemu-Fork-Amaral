@@ -3,6 +3,7 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.regex.Pattern
 import javax.xml.bind.DatatypeConverter
+import org.gradle.api.GradleException
 
 plugins {
     alias(libs.plugins.android.application)
@@ -29,6 +30,21 @@ fun String.runCommand(workingDir: File = File(".")): String? {
 
 fun getGitHash(): String? = "git log --format=%h -1".runCommand()?.trim()
 
+fun getGitCommitCount(): Int? =
+    "git rev-list --count HEAD".runCommand()?.trim()?.toIntOrNull()
+
+fun getPositiveEnvironmentInt(name: String): Int? {
+    val value = System.getenv(name)?.takeIf { it.isNotBlank() } ?: return null
+    return value.toIntOrNull()?.takeIf { it > 0 }
+        ?: throw GradleException("$name must be a positive 32-bit integer")
+}
+
+fun getBooleanEnvironment(name: String): Boolean {
+    val value = System.getenv(name)?.takeIf { it.isNotBlank() } ?: return false
+    return value.toBooleanStrictOrNull()
+        ?: throw GradleException("$name must be either true or false")
+}
+
 val versionMajor: Int? = System.getenv("EMULATOR_VERSION_MAJOR")?.toIntOrNull()
 val versionMinor: Int? = System.getenv("EMULATOR_VERSION_MINOR")?.toIntOrNull()
 
@@ -38,6 +54,30 @@ fun getVersionName(): String {
     return getGitHash() ?: "1.0"
 }
 
+fun getVersionCode(): Int =
+    getPositiveEnvironmentInt("EMULATOR_VERSION_CODE")
+        ?: getGitCommitCount()?.takeIf { it > 0 }
+        ?: 1
+
+val releaseSigningValues = mapOf(
+    "ANDROID_STORE_FILE" to System.getenv("ANDROID_STORE_FILE")?.takeIf { it.isNotBlank() },
+    "ANDROID_KEY_STORE_PASSWORD" to System.getenv("ANDROID_KEY_STORE_PASSWORD")?.takeIf { it.isNotBlank() },
+    "ANDROID_KEY_ALIAS" to System.getenv("ANDROID_KEY_ALIAS")?.takeIf { it.isNotBlank() },
+    "ANDROID_KEY_PASSWORD" to System.getenv("ANDROID_KEY_PASSWORD")?.takeIf { it.isNotBlank() },
+)
+val releaseSigningConfigured = releaseSigningValues.values.all { it != null }
+val releaseSigningPartiallyConfigured = releaseSigningValues.values.any { it != null } &&
+        !releaseSigningConfigured
+val releaseSigningRequired = getBooleanEnvironment("ANDROID_REQUIRE_RELEASE_SIGNING")
+
+if (releaseSigningPartiallyConfigured) {
+    val missingValues = releaseSigningValues.filterValues { it == null }.keys.joinToString()
+    throw GradleException("Incomplete Android release signing configuration. Missing: $missingValues")
+}
+if (releaseSigningRequired && !releaseSigningConfigured) {
+    throw GradleException("Android release signing is required but no complete signing configuration was provided")
+}
+
 val cemuDataFilesFolder = "../../../bin"
 
 android {
@@ -45,11 +85,11 @@ android {
     compileSdk = 36
     ndkVersion = "29.0.14206865"
     defaultConfig {
-        applicationId = "info.cemu.cemu"
+        applicationId = "io.github.rickamaral94.cemu"
         minSdk = 30
         targetSdk = 35
         versionName = getVersionName()
-        versionCode = 1
+        versionCode = getVersionCode()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -71,15 +111,15 @@ android {
         jniLibs.useLegacyPackaging = true
     }
 
-    val keystoreFilePath: String? = System.getenv("ANDROID_STORE_FILE")
+    val keystoreFilePath = releaseSigningValues.getValue("ANDROID_STORE_FILE")
 
     signingConfigs {
-        if (keystoreFilePath != null) {
+        if (releaseSigningConfigured) {
             create("release") {
-                storeFile = file(keystoreFilePath)
-                storePassword = System.getenv("ANDROID_KEY_STORE_PASSWORD")
-                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                keyPassword = System.getenv("ANDROID_KEY_STORE_PASSWORD")
+                storeFile = file(keystoreFilePath!!)
+                storePassword = releaseSigningValues.getValue("ANDROID_KEY_STORE_PASSWORD")
+                keyAlias = releaseSigningValues.getValue("ANDROID_KEY_ALIAS")
+                keyPassword = releaseSigningValues.getValue("ANDROID_KEY_PASSWORD")
             }
         }
     }
@@ -94,7 +134,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = if (keystoreFilePath != null) {
+            signingConfig = if (releaseSigningConfigured) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")

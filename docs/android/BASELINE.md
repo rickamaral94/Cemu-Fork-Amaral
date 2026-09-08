@@ -90,9 +90,10 @@ uma sincronização dedicada, nunca misturadas com SGSR ou otimizações.
    entradas ou tamanho descompactado.
 3. O download de graphic packs escolhe o primeiro asset, mantém o ZIP inteiro em
    memória e não verifica hash/assinatura.
-4. O `versionCode` Android está fixo em `1`, inviabilizando atualização ordenada.
-5. Identidade (`applicationId`, nome e assinatura) ainda é a do Cemu; a decisão
-   definitiva do fork precisa ocorrer antes de qualquer release pública.
+4. A identidade inicial do port ainda era `info.cemu.cemu`, com `versionCode`
+   fixo em `1`; a Fase 1B corrigiu ambos antes da primeira release pública.
+5. A chave de release dedicada permanece fora do repositório. Builds comuns de
+   CI usam assinatura debug e não são releases distribuíveis.
 6. A CI gera APK, mas não executa explicitamente `test` antes do assemble.
 7. Não há teste diferencial automatizado interpretador versus JIT AArch64.
 8. Não há base versionada de compatibilidade nem pacote de diagnóstico sanitizado.
@@ -111,4 +112,3 @@ uma sincronização dedicada, nunca misturadas com SGSR ou otimizações.
 Camadas específicas do fork — UI Android, SAF/JNI, carregamento AdrenoTools,
 frame pacing móvel, diagnósticos e atualização — devem ficar isoladas atrás de
 interfaces para reduzir conflitos.
-

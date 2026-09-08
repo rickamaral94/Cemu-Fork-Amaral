@@ -31,9 +31,19 @@ FPS apresentado nunca devem ser misturados.
 O histórico original é preservado. Alterações Android específicas devem ser
 isoladas para que correções gerais possam voltar ao Cemu quando apropriado.
 
+## Identidade Android
+
+- `applicationId`: `io.github.rickamaral94.cemu`;
+- nome público: Cemu Fork Amaral;
+- builds comuns de CI: assinatura debug, destinados somente a testes;
+- releases públicas: chave dedicada mantida fora do repositório e exigida pelo
+  ambiente protegido de release.
+
+Consulte `docs/android/RELEASE_SIGNING.md` para a política de custódia,
+versionamento e migração da identidade anterior.
+
 ## Estado declarado
 
 Consulte `docs/android/BASELINE.md` e `docs/android/FEATURE_MATRIX.md`. Nenhum
 título deve ser marcado como jogável, completo ou perfeito sem evidência
 reproduzível na matriz de compatibilidade.
-

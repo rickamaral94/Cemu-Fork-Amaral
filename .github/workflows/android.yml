@@ -77,6 +77,9 @@ jobs:
         run: ./gradlew --no-daemon test assembleRelease --stacktrace
 
       - name: Verify release APK
+        env:
+          EXPECTED_APPLICATION_ID: io.github.rickamaral94.cemu
+          VERIFY_APK_SIGNATURE: "1"
         shell: bash
         run: |
           set -euo pipefail

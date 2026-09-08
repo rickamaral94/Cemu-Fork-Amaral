@@ -8,7 +8,7 @@ renderização instáveis.
 |---:|---|---|
 | 0 | baseline, arquitetura, matrizes, riscos e sincronização | commits/base registrados; CI baseline conhecida |
 | 1A | segurança de pacotes e CI Android | testes de ZIP; APK somente arm64; unit tests no CI |
-| 1B | identidade/versionamento do fork | `applicationId`, assinatura e política decididos |
+| 1B | identidade/versionamento do fork | `applicationId`, versionamento e política de assinatura implementados |
 | 1C | APK reproduzível e smoke test legal | instala, inicia e executa homebrew/teste público |
 | 2 | sincronização upstream | conflitos resolvidos isoladamente; matriz sem regressão |
 | 3 | estabilidade/ciclo de vida | pause/resume, surface e device loss testados |
@@ -26,10 +26,7 @@ renderização instáveis.
 
 ## Decisões que bloqueiam release, não o desenvolvimento
 
-- `applicationId` definitivo;
-- nome público e ícone;
-- chave de assinatura e custódia;
+- ícone público definitivo;
 - `minSdk` suportado;
 - esquema dos canais stable/beta/nightly;
 - formato do manifesto assinado do atualizador.
-
