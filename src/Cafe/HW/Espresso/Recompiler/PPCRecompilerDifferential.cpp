@@ -85,6 +85,24 @@ constexpr std::array<uint32, 4> kFloatingPointCode{
 	kReturnToInterpreter,
 };
 
+constexpr std::array<uint32, 4> kAtomicSuccessCode{
+	EncodeX(31, 4, 0, 3, 20),           // lwarx r4, 0, r3
+	EncodeD(14, 5, 4, 1),                // addi r5, r4, 1
+	EncodeX(31, 5, 0, 3, 150, true),    // stwcx. r5, 0, r3
+	kReturnToInterpreter,
+};
+
+constexpr std::array<uint32, 5> kAtomicCompareFailureCode{
+	EncodeX(31, 4, 0, 3, 20),           // lwarx r4, 0, r3
+	EncodeD(14, 5, 4, 1),                // addi r5, r4, 1
+	EncodeD(36, 6, 3, 0),                // stw r6, 0(r3)
+	EncodeX(31, 5, 0, 3, 150, true),    // stwcx. r5, 0, r3
+	kReturnToInterpreter,
+};
+
+static_assert(kAtomicSuccessCode[0] == 0x7C801828); // lwarx r4, 0, r3
+static_assert(kAtomicSuccessCode[2] == 0x7CA0192D); // stwcx. r5, 0, r3
+
 using StateSetup = void (*)(PPCInterpreter_t&, MPTR);
 using MemorySetup = void (*)(MPTR);
 using ResultValidator = std::string (*)(const PPCInterpreter_t&, MPTR);
@@ -116,10 +134,36 @@ void SetupFloatingPoint(PPCInterpreter_t& state, MPTR)
 	state.fpr[2].fp1 = 4.0;
 }
 
+void SetupAtomicSuccess(PPCInterpreter_t& state, MPTR dataAddress)
+{
+	state.gpr[3] = dataAddress;
+	state.cr[0] = 1;
+	state.cr[1] = 1;
+	state.cr[2] = 0;
+	state.cr[3] = 0;
+	state.xer_so = 1;
+}
+
+void SetupAtomicCompareFailure(PPCInterpreter_t& state, MPTR dataAddress)
+{
+	state.gpr[3] = dataAddress;
+	state.gpr[6] = 0xA1B2C3D4;
+	state.cr[0] = 1;
+	state.cr[1] = 1;
+	state.cr[2] = 1;
+	state.cr[3] = 1;
+	state.xer_so = 0;
+}
+
 void PrepareLoadStoreMemory(MPTR dataAddress)
 {
 	memory_writeU32(dataAddress, 0x11223344);
 	memory_writeU32(dataAddress + 4, 0xDEADBEEF);
+}
+
+void PrepareAtomicMemory(MPTR dataAddress)
+{
+	memory_writeU32(dataAddress, 0x10203040);
 }
 
 std::string ValidateInteger(const PPCInterpreter_t& state, MPTR)
@@ -157,6 +201,38 @@ std::string ValidateFloatingPoint(const PPCInterpreter_t& state, MPTR)
 	{
 		return fmt::format("unexpected FP/PS result f3={} f4={} ps5=[{},{}]",
 			state.fpr[3].fp0, state.fpr[4].fp0, state.fpr[5].fp0, state.fpr[5].fp1);
+	}
+	return {};
+}
+
+std::string ValidateAtomicSuccess(const PPCInterpreter_t& state, MPTR dataAddress)
+{
+	const uint32 storedValue = memory_readU32(dataAddress);
+	if (state.gpr[4] != 0x10203040 || state.gpr[5] != 0x10203041 ||
+		storedValue != 0x10203041 || state.reservedMemAddr != 0 ||
+		state.reservedMemValue != 0 || state.cr[0] != 0 || state.cr[1] != 0 ||
+		state.cr[2] != 1 || state.cr[3] != 1)
+	{
+		return fmt::format(
+			"unexpected atomic-success result r4={:08x} r5={:08x} memory={:08x} reservation=[{:08x},{:08x}] cr0=[{},{},{},{}]",
+			state.gpr[4], state.gpr[5], storedValue, state.reservedMemAddr,
+			state.reservedMemValue, state.cr[0], state.cr[1], state.cr[2], state.cr[3]);
+	}
+	return {};
+}
+
+std::string ValidateAtomicCompareFailure(const PPCInterpreter_t& state, MPTR dataAddress)
+{
+	const uint32 storedValue = memory_readU32(dataAddress);
+	if (state.gpr[4] != 0x10203040 || state.gpr[5] != 0x10203041 ||
+		storedValue != 0xA1B2C3D4 || state.reservedMemAddr != 0 ||
+		state.reservedMemValue != 0 || state.cr[0] != 0 || state.cr[1] != 0 ||
+		state.cr[2] != 0 || state.cr[3] != 0)
+	{
+		return fmt::format(
+			"unexpected atomic-failure result r4={:08x} r5={:08x} memory={:08x} reservation=[{:08x},{:08x}] cr0=[{},{},{},{}]",
+			state.gpr[4], state.gpr[5], storedValue, state.reservedMemAddr,
+			state.reservedMemValue, state.cr[0], state.cr[1], state.cr[2], state.cr[3]);
 	}
 	return {};
 }
@@ -331,11 +407,13 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 
 	const MPTR codeAddress = allocation.GetMPTR();
 	const MPTR dataAddress = codeAddress + kTestDataOffset;
-	const std::array<DifferentialCase, 4> cases{
+	const std::array<DifferentialCase, 6> cases{
 		DifferentialCase{"integer-cr-rotate", kIntegerCode, SetupNoState, nullptr, ValidateInteger, false},
 		DifferentialCase{"conditional-branch", kBranchCode, SetupNoState, nullptr, ValidateBranch, false},
 		DifferentialCase{"load-store-endian", kLoadStoreCode, SetupLoadStore, PrepareLoadStoreMemory, ValidateLoadStore, true},
 		DifferentialCase{"floating-paired-single", kFloatingPointCode, SetupFloatingPoint, nullptr, ValidateFloatingPoint, false},
+		DifferentialCase{"atomic-reservation-success", kAtomicSuccessCode, SetupAtomicSuccess, PrepareAtomicMemory, ValidateAtomicSuccess, false},
+		DifferentialCase{"atomic-reservation-compare-failure", kAtomicCompareFailureCode, SetupAtomicCompareFailure, PrepareAtomicMemory, ValidateAtomicCompareFailure, false},
 	};
 
 	uint32 passedCount = 0;
