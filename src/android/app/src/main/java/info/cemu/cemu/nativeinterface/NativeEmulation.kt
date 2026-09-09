@@ -46,6 +46,9 @@ object NativeEmulation {
     external fun resumeTitle()
 
     @JvmStatic
+    external fun shutdownEmulation()
+
+    @JvmStatic
     external fun initializeSystems()
 
     @JvmStatic

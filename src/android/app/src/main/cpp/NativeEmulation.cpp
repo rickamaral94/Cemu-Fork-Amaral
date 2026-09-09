@@ -402,3 +402,9 @@ Java_info_cemu_cemu_nativeinterface_NativeEmulation_resumeTitle([[maybe_unused]]
 {
 	CafeSystem::ResumeTitle();
 }
+
+extern "C" [[maybe_unused]] JNIEXPORT void JNICALL
+Java_info_cemu_cemu_nativeinterface_NativeEmulation_shutdownEmulation([[maybe_unused]] JNIEnv* env, [[maybe_unused]] jclass clazz)
+{
+	CafeSystem::Shutdown();
+}

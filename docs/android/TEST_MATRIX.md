@@ -94,12 +94,13 @@ de exceções de memória; provocar uma falha de host antes dessa infraestrutura
 poderia encerrar o APK em vez de produzir um resultado diagnóstico controlado.
 
 Para validar a reclamação do code cache no ponto de quiescência, inicie um
-título, jogue por pelo menos dez minutos, saia pelo menu do emulador e repita o
-ciclo sem encerrar o aplicativo. Cada saída deve registrar
-`JIT ARM64 shutdown cleanup` com `reclaimedFunctions` e
+título, jogue por pelo menos dez minutos e use **Sair** no menu do emulador. A
+ação encerra o processo Android depois do shutdown nativo. Reabra o aplicativo,
+gere o primeiro pacote de diagnóstico e repita o ciclo. Cada pacote deve
+registrar `JIT ARM64 shutdown cleanup` com `reclaimedFunctions` e
 `reclaimedAllocationBytes` maiores que zero. A segunda inicialização deve
 continuar funcional e executar novamente os oito casos diferenciais. Essa
-validação comprova a liberação entre títulos; não comprova reutilização segura
+validação comprova a liberação entre execuções; não comprova reutilização segura
 de código invalidado durante uma sessão ainda ativa.
 
 ## Método de performance

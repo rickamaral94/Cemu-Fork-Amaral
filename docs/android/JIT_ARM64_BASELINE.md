@@ -45,6 +45,12 @@ não limita o crescimento causado por muitas invalidações dentro de uma única
 sessão longa. Reutilização durante a execução ainda exige uma estratégia por
 época/RCU ou outra barreira global comprovada.
 
+No Android, a ação **Sair** agora executa `CafeSystem::Shutdown()` antes de
+encerrar o processo. Anteriormente o fluxo registrava a telemetria e chamava
+diretamente `exitProcess(0)`, pulando `ShutdownTitle()` e toda a limpeza nativa.
+O flush do log ocorre depois do shutdown, preservando a evidência de liberação
+para o pacote de diagnóstico da próxima inicialização.
+
 ## Telemetria
 
 Ao sair pelo menu do emulador, o log registra uma linha `JIT ARM64 stats` com:
