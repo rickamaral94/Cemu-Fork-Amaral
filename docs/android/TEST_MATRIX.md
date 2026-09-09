@@ -103,6 +103,10 @@ continuar funcional e executar novamente os oito casos diferenciais. Essa
 validação comprova a liberação entre execuções; não comprova reutilização segura
 de código invalidado durante uma sessão ainda ativa.
 
+O campo `log.source` deve ser `last-completed-game-session`,
+`previous-game-session` ou `current-game-session`. `last-crash-session` indica
+um crash histórico preservado e não serve como evidência deste ciclo de teste.
+
 ## Método de performance
 
 Usar AB/BA, aquecimento controlado, no mínimo cinco repetições quando o teste for

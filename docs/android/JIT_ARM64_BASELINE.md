@@ -49,7 +49,10 @@ No Android, a ação **Sair** agora executa `CafeSystem::Shutdown()` antes de
 encerrar o processo. Anteriormente o fluxo registrava a telemetria e chamava
 diretamente `exitProcess(0)`, pulando `ShutdownTitle()` e toda a limpeza nativa.
 O flush do log ocorre depois do shutdown, preservando a evidência de liberação
-para o pacote de diagnóstico da próxima inicialização.
+para o pacote de diagnóstico da próxima inicialização. Antes de encerrar o
+processo, o Android também cria uma cópia limitada do gameplay concluído. Essa
+cópia tem prioridade sobre crashes históricos e mantém o cabeçalho e o final do
+log, onde ficam a telemetria e a linha de limpeza do code cache.
 
 ## Telemetria
 
