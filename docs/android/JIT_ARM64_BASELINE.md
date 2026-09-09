@@ -52,7 +52,7 @@ há instrumentação adicionada ao caminho que executa cada bloco recompilado.
 
 ## Testes diferenciais da nightly
 
-Builds nightly executam sete casos sintéticos isolados antes do início do
+Builds nightly executam oito casos sintéticos isolados antes do início do
 título. Cada caso parte do mesmo estado, roda uma vez no interpretador e uma vez
 no JIT AArch64 e compara o estado arquitetural resultante. A cobertura inicial
 inclui:
@@ -64,6 +64,8 @@ inclui:
 - reserva atômica `lwarx`/`stwcx.` com sucesso;
 - falha de `stwcx.` quando o valor reservado foi alterado;
 - smoke test de tradução para `eieio`, `sync` e `isync`.
+- loads e stores desalinhados de 16, 32 e 64 bits, incluindo extensão de sinal,
+  endianness e ponto flutuante de precisão dupla.
 
 Os casos atômicos também verificam a limpeza da reserva e todos os bits de CR0.
 O bit SO de CR0 deve copiar `XER[SO]`; ele não pode reutilizar o valor anterior
@@ -99,9 +101,26 @@ das instruções AArch64, mas não invalidaria código PowerPC já traduzido. A
 semântica de `isync` será fechada junto de `icbi`, invalidação do JIT e
 self-modifying code para evitar uma correção apenas aparente.
 
+## Alinhamento e exceções
+
+O caso `unaligned-load-store` usa apenas RAM normal já mapeada e endereços dentro
+da alocação temporária do teste. A preparação e a validação são feitas byte a
+byte para que o próprio teste não dependa de um acesso C++ desalinhado. O caso
+compara o interpretador com o JIT para `lwz`, `lhz`, `lha`, `stw`, `sth`, `lfd` e
+`stfd`.
+
+Operações de reserva atômica desalinhadas não entram nesse teste. Além de a
+semântica PowerPC desse uso não oferecer um resultado portável, loads/stores
+atômicos AArch64 podem gerar uma falha de alinhamento no host. O manipulador de
+`SIGBUS`/`SIGSEGV` atual do Android registra o crash e encerra o processo; ele
+ainda não converte uma falha do JIT em exceção do convidado ou fallback seguro.
+Portanto, exceções de memória continuam pendentes e serão tratadas junto do
+desenho de recuperação do JIT, sem declarar suporte com base apenas neste smoke
+test.
+
 ## Critério para o próximo incremento
 
-Ampliar gradualmente os casos diferenciais para exceções, alinhamento,
+Ampliar gradualmente os casos diferenciais para exceções recuperáveis,
 invalidação, concorrência e resultados de ponto flutuante especiais. Nenhuma otimização do
 emissor, alocador de registradores ou linking de blocos será aprovada apenas por
 FPS médio.

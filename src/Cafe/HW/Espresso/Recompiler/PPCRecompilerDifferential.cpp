@@ -110,6 +110,17 @@ constexpr std::array<uint32, 7> kMemoryBarrierCode{
 	kReturnToInterpreter,
 };
 
+constexpr std::array<uint32, 8> kUnalignedLoadStoreCode{
+	EncodeD(32, 4, 3, 1),               // lwz r4, 1(r3)
+	EncodeD(40, 5, 3, 5),               // lhz r5, 5(r3)
+	EncodeD(42, 6, 3, 5),               // lha r6, 5(r3)
+	EncodeD(36, 4, 3, 9),               // stw r4, 9(r3)
+	EncodeD(44, 5, 3, 14),              // sth r5, 14(r3)
+	EncodeD(50, 1, 3, 17),              // lfd f1, 17(r3)
+	EncodeD(54, 1, 3, 27),              // stfd f1, 27(r3)
+	kReturnToInterpreter,
+};
+
 static_assert(kAtomicSuccessCode[0] == 0x7C801828); // lwarx r4, 0, r3
 static_assert(kAtomicSuccessCode[2] == 0x7CA0192D); // stwcx. r5, 0, r3
 static_assert(kMemoryBarrierCode[2] == 0x7C0006AC); // eieio
@@ -173,6 +184,11 @@ void SetupMemoryBarrier(PPCInterpreter_t& state, MPTR dataAddress)
 	state.gpr[3] = dataAddress;
 }
 
+void SetupUnalignedLoadStore(PPCInterpreter_t& state, MPTR dataAddress)
+{
+	state.gpr[3] = dataAddress;
+}
+
 void PrepareLoadStoreMemory(MPTR dataAddress)
 {
 	memory_writeU32(dataAddress, 0x11223344);
@@ -187,6 +203,25 @@ void PrepareAtomicMemory(MPTR dataAddress)
 void PrepareMemoryBarrierMemory(MPTR dataAddress)
 {
 	memory_writeU32(dataAddress, 0);
+}
+
+void PrepareUnalignedLoadStoreMemory(MPTR dataAddress)
+{
+	for (MPTR offset = 0; offset < 40; ++offset)
+		memory_writeU8(dataAddress + offset, 0);
+
+	constexpr std::array<uint8, 4> wordBytes{0x11, 0x22, 0x33, 0x44};
+	for (size_t i = 0; i < wordBytes.size(); ++i)
+		memory_writeU8(dataAddress + 1 + static_cast<MPTR>(i), wordBytes[i]);
+
+	memory_writeU8(dataAddress + 5, 0x80);
+	memory_writeU8(dataAddress + 6, 0x01);
+
+	// Big-endian IEEE-754 representation of 1.5. Byte writes avoid relying on
+	// alignment in the test setup itself.
+	constexpr std::array<uint8, 8> doubleBytes{0x3F, 0xF8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	for (size_t i = 0; i < doubleBytes.size(); ++i)
+		memory_writeU8(dataAddress + 17 + static_cast<MPTR>(i), doubleBytes[i]);
 }
 
 std::string ValidateInteger(const PPCInterpreter_t& state, MPTR)
@@ -267,6 +302,36 @@ std::string ValidateMemoryBarrier(const PPCInterpreter_t& state, MPTR dataAddres
 	{
 		return fmt::format("unexpected barrier result r4={:08x} r5={:08x} memory={:08x}",
 			state.gpr[4], state.gpr[5], storedValue);
+	}
+	return {};
+}
+
+std::string ValidateUnalignedLoadStore(const PPCInterpreter_t& state, MPTR dataAddress)
+{
+	if (state.gpr[4] != 0x11223344 || state.gpr[5] != 0x8001 || state.gpr[6] != 0xFFFF8001 ||
+		state.fpr[1].fp0 != 1.5)
+	{
+		return fmt::format("unexpected unaligned load result r4={:08x} r5={:08x} r6={:08x} f1={}",
+			state.gpr[4], state.gpr[5], state.gpr[6], state.fpr[1].fp0);
+	}
+
+	constexpr std::array<uint8, 4> expectedWord{0x11, 0x22, 0x33, 0x44};
+	for (size_t i = 0; i < expectedWord.size(); ++i)
+	{
+		const uint8 value = memory_readU8(dataAddress + 9 + static_cast<MPTR>(i));
+		if (value != expectedWord[i])
+			return fmt::format("unexpected unaligned word store byte={} value={:02x}", i, value);
+	}
+
+	if (memory_readU8(dataAddress + 14) != 0x80 || memory_readU8(dataAddress + 15) != 0x01)
+		return "unexpected unaligned halfword store";
+
+	constexpr std::array<uint8, 8> expectedDouble{0x3F, 0xF8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	for (size_t i = 0; i < expectedDouble.size(); ++i)
+	{
+		const uint8 value = memory_readU8(dataAddress + 27 + static_cast<MPTR>(i));
+		if (value != expectedDouble[i])
+			return fmt::format("unexpected unaligned double store byte={} value={:02x}", i, value);
 	}
 	return {};
 }
@@ -441,7 +506,7 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 
 	const MPTR codeAddress = allocation.GetMPTR();
 	const MPTR dataAddress = codeAddress + kTestDataOffset;
-	const std::array<DifferentialCase, 7> cases{
+	const std::array<DifferentialCase, 8> cases{
 		DifferentialCase{"integer-cr-rotate", kIntegerCode, SetupNoState, nullptr, ValidateInteger, false},
 		DifferentialCase{"conditional-branch", kBranchCode, SetupNoState, nullptr, ValidateBranch, false},
 		DifferentialCase{"load-store-endian", kLoadStoreCode, SetupLoadStore, PrepareLoadStoreMemory, ValidateLoadStore, true},
@@ -449,6 +514,7 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 		DifferentialCase{"atomic-reservation-success", kAtomicSuccessCode, SetupAtomicSuccess, PrepareAtomicMemory, ValidateAtomicSuccess, false},
 		DifferentialCase{"atomic-reservation-compare-failure", kAtomicCompareFailureCode, SetupAtomicCompareFailure, PrepareAtomicMemory, ValidateAtomicCompareFailure, false},
 		DifferentialCase{"memory-barrier-smoke", kMemoryBarrierCode, SetupMemoryBarrier, PrepareMemoryBarrierMemory, ValidateMemoryBarrier, false},
+		DifferentialCase{"unaligned-load-store", kUnalignedLoadStoreCode, SetupUnalignedLoadStore, PrepareUnalignedLoadStoreMemory, ValidateUnalignedLoadStore, false},
 	};
 
 	uint32 passedCount = 0;
