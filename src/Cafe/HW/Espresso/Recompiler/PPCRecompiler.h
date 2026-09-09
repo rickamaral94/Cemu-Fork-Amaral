@@ -152,8 +152,26 @@ typedef struct
 
 extern PPCRecompilerInstanceData_t* ppcRecompilerInstanceData;
 
+struct PPCRecompilerStats
+{
+	uint64 compileAttempts;
+	uint64 translationFailures;
+	uint64 backendFailures;
+	uint64 generatedFunctions;
+	uint64 generatedAllocationBytes;
+	uint64 publishedFunctions;
+	uint64 publicationFailures;
+	uint64 discardedUnpublishedFunctions;
+	uint64 discardedUnpublishedAllocationBytes;
+	uint64 invalidatedFunctions;
+	uint64 retainedInvalidatedAllocationBytes;
+};
+
 void PPCRecompiler_init();
 void PPCRecompiler_Shutdown();
+
+PPCRecompilerStats PPCRecompiler_GetStats();
+void PPCRecompiler_LogStats();
 
 void PPCRecompiler_Enable();
 void PPCRecompiler_Disable();

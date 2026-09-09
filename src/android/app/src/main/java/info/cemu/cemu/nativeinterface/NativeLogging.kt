@@ -9,4 +9,7 @@ object NativeLogging {
 
     @JvmStatic
     external fun waitForFlush()
+
+    @JvmStatic
+    external fun logRecompilerStats()
 }

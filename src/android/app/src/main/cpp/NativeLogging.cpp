@@ -1,5 +1,6 @@
 #include "Common/ExceptionHandler/ExceptionHandler.h"
 #include "Cemu/Logging/CemuLogging.h"
+#include "Cafe/HW/Espresso/Recompiler/PPCRecompiler.h"
 #include "JNIUtils.h"
 
 extern "C" [[maybe_unused]] JNIEXPORT void JNICALL
@@ -21,4 +22,10 @@ extern "C" [[maybe_unused]] JNIEXPORT void JNICALL
 Java_info_cemu_cemu_nativeinterface_NativeLogging_waitForFlush([[maybe_unused]] JNIEnv* env, [[maybe_unused]] jclass clazz)
 {
 	cemuLog_waitForFlush();
+}
+
+extern "C" [[maybe_unused]] JNIEXPORT void JNICALL
+Java_info_cemu_cemu_nativeinterface_NativeLogging_logRecompilerStats([[maybe_unused]] JNIEnv* env, [[maybe_unused]] jclass clazz)
+{
+	PPCRecompiler_LogStats();
 }

@@ -51,6 +51,20 @@ struct
 	std::atomic_bool workerThreadStopSignal{false};
 	// function storage
 	RangeStore<PPCRecFunction_t*, uint32, 7703, 0x2000> functionStorage;
+	struct
+	{
+		std::atomic_uint64_t compileAttempts{0};
+		std::atomic_uint64_t translationFailures{0};
+		std::atomic_uint64_t backendFailures{0};
+		std::atomic_uint64_t generatedFunctions{0};
+		std::atomic_uint64_t generatedAllocationBytes{0};
+		std::atomic_uint64_t publishedFunctions{0};
+		std::atomic_uint64_t publicationFailures{0};
+		std::atomic_uint64_t discardedUnpublishedFunctions{0};
+		std::atomic_uint64_t discardedUnpublishedAllocationBytes{0};
+		std::atomic_uint64_t invalidatedFunctions{0};
+		std::atomic_uint64_t retainedInvalidatedAllocationBytes{0};
+	} stats;
 }s_ppcRecompilerState;
 
 void ATTR_MS_ABI (*PPCRecompiler_enterRecompilerCode)(uint64 codeMem, uint64 ppcInterpreterInstance);
@@ -64,6 +78,69 @@ static std::mutex s_singleRecompilationMutex;
 #endif
 
 void PPCRecompiler_recompileAtAddress(uint32 address);
+
+namespace
+{
+constexpr auto s_relaxedMemoryOrder = std::memory_order_relaxed;
+
+void PPCRecompiler_ResetStats()
+{
+	auto& stats = s_ppcRecompilerState.stats;
+	stats.compileAttempts.store(0, s_relaxedMemoryOrder);
+	stats.translationFailures.store(0, s_relaxedMemoryOrder);
+	stats.backendFailures.store(0, s_relaxedMemoryOrder);
+	stats.generatedFunctions.store(0, s_relaxedMemoryOrder);
+	stats.generatedAllocationBytes.store(0, s_relaxedMemoryOrder);
+	stats.publishedFunctions.store(0, s_relaxedMemoryOrder);
+	stats.publicationFailures.store(0, s_relaxedMemoryOrder);
+	stats.discardedUnpublishedFunctions.store(0, s_relaxedMemoryOrder);
+	stats.discardedUnpublishedAllocationBytes.store(0, s_relaxedMemoryOrder);
+	stats.invalidatedFunctions.store(0, s_relaxedMemoryOrder);
+	stats.retainedInvalidatedAllocationBytes.store(0, s_relaxedMemoryOrder);
+}
+
+void PPCRecompiler_destroyUnpublishedFunction(PPCRecFunction_t* func)
+{
+	if (!func)
+		return;
+#if defined(__aarch64__)
+	PPCRecompiler_cleanupAArch64Code(func->x86Code, func->x86Size);
+	s_ppcRecompilerState.stats.discardedUnpublishedFunctions.fetch_add(1, s_relaxedMemoryOrder);
+	s_ppcRecompilerState.stats.discardedUnpublishedAllocationBytes.fetch_add(func->x86Size, s_relaxedMemoryOrder);
+#endif
+	delete func;
+}
+}
+
+PPCRecompilerStats PPCRecompiler_GetStats()
+{
+	auto& stats = s_ppcRecompilerState.stats;
+	return {
+		.compileAttempts = stats.compileAttempts.load(s_relaxedMemoryOrder),
+		.translationFailures = stats.translationFailures.load(s_relaxedMemoryOrder),
+		.backendFailures = stats.backendFailures.load(s_relaxedMemoryOrder),
+		.generatedFunctions = stats.generatedFunctions.load(s_relaxedMemoryOrder),
+		.generatedAllocationBytes = stats.generatedAllocationBytes.load(s_relaxedMemoryOrder),
+		.publishedFunctions = stats.publishedFunctions.load(s_relaxedMemoryOrder),
+		.publicationFailures = stats.publicationFailures.load(s_relaxedMemoryOrder),
+		.discardedUnpublishedFunctions = stats.discardedUnpublishedFunctions.load(s_relaxedMemoryOrder),
+		.discardedUnpublishedAllocationBytes = stats.discardedUnpublishedAllocationBytes.load(s_relaxedMemoryOrder),
+		.invalidatedFunctions = stats.invalidatedFunctions.load(s_relaxedMemoryOrder),
+		.retainedInvalidatedAllocationBytes = stats.retainedInvalidatedAllocationBytes.load(s_relaxedMemoryOrder),
+	};
+}
+
+void PPCRecompiler_LogStats()
+{
+	const auto stats = PPCRecompiler_GetStats();
+	cemuLog_log(LogType::Force,
+		"JIT ARM64 stats: attempts={} translationFailures={} backendFailures={} generatedFunctions={} generatedAllocationBytes={} publishedFunctions={} publicationFailures={} discardedUnpublishedFunctions={} discardedUnpublishedAllocationBytes={} invalidatedFunctions={} retainedInvalidatedAllocationBytes={}",
+		stats.compileAttempts, stats.translationFailures, stats.backendFailures,
+		stats.generatedFunctions, stats.generatedAllocationBytes, stats.publishedFunctions,
+		stats.publicationFailures, stats.discardedUnpublishedFunctions,
+		stats.discardedUnpublishedAllocationBytes, stats.invalidatedFunctions,
+		stats.retainedInvalidatedAllocationBytes);
+}
 
 // this function does never block and can fail if the recompiler lock cannot be acquired immediately
 void PPCRecompiler_visitAddressNoBlock(uint32 enterAddress)
@@ -176,8 +253,10 @@ bool PPCRecompiler_ApplyIMLPasses(ppcImlGenContext_t& ppcImlGenContext);
 
 PPCRecFunction_t* PPCRecompiler_recompileFunction(PPCFunctionBoundaryTracker::PPCRange_t range, std::set<uint32>& entryAddresses, std::vector<std::pair<MPTR, uint32>>& entryPointsOut, PPCFunctionBoundaryTracker& boundaryTracker)
 {
+	s_ppcRecompilerState.stats.compileAttempts.fetch_add(1, s_relaxedMemoryOrder);
 	if (range.startAddress >= PPC_REC_CODE_AREA_END)
 	{
+		s_ppcRecompilerState.stats.translationFailures.fetch_add(1, s_relaxedMemoryOrder);
 		cemuLog_log(LogType::Force, "Attempting to recompile function outside of allowed code area");
 		return nullptr;
 	}
@@ -190,6 +269,7 @@ PPCRecFunction_t* PPCRecompiler_recompileFunction(PPCFunctionBoundaryTracker::PP
 		{
 			if (coreinit::codeGenShouldAvoid())
 			{
+				s_ppcRecompilerState.stats.translationFailures.fetch_add(1, s_relaxedMemoryOrder);
 				return nullptr;
 			}
 		}
@@ -210,6 +290,7 @@ PPCRecFunction_t* PPCRecompiler_recompileFunction(PPCFunctionBoundaryTracker::PP
 	bool compiledSuccessfully = PPCRecompiler_generateIntermediateCode(ppcImlGenContext, ppcRecFunc, entryAddresses, boundaryTracker);
 	if (compiledSuccessfully == false)
 	{
+		s_ppcRecompilerState.stats.translationFailures.fetch_add(1, s_relaxedMemoryOrder);
 		delete ppcRecFunc;
 		return nullptr;
 	}
@@ -221,6 +302,7 @@ PPCRecFunction_t* PPCRecompiler_recompileFunction(PPCFunctionBoundaryTracker::PP
 	{
 		if (ppcRecFunc->ppcAddress < ppcRecLowerAddr || ppcRecFunc->ppcAddress > ppcRecUpperAddr)
 		{
+			s_ppcRecompilerState.stats.translationFailures.fetch_add(1, s_relaxedMemoryOrder);
 			delete ppcRecFunc;
 			return nullptr;
 		}
@@ -229,6 +311,7 @@ PPCRecFunction_t* PPCRecompiler_recompileFunction(PPCFunctionBoundaryTracker::PP
 	// apply passes
 	if (!PPCRecompiler_ApplyIMLPasses(ppcImlGenContext))
 	{
+		s_ppcRecompilerState.stats.translationFailures.fetch_add(1, s_relaxedMemoryOrder);
 		delete ppcRecFunc;
 		return nullptr;
 	}
@@ -238,15 +321,21 @@ PPCRecFunction_t* PPCRecompiler_recompileFunction(PPCFunctionBoundaryTracker::PP
 	bool x64GenerationSuccess = PPCRecompiler_generateX64Code(ppcRecFunc, &ppcImlGenContext);
 	if (x64GenerationSuccess == false)
 	{
+		s_ppcRecompilerState.stats.backendFailures.fetch_add(1, s_relaxedMemoryOrder);
+		delete ppcRecFunc;
 		return nullptr;
 	}
 #elif defined(__aarch64__)
 	bool aarch64GenerationSuccess = PPCRecompiler_generateAArch64Code(ppcRecFunc, &ppcImlGenContext);
 	if (aarch64GenerationSuccess == false)
 	{
+		s_ppcRecompilerState.stats.backendFailures.fetch_add(1, s_relaxedMemoryOrder);
+		delete ppcRecFunc;
 		return nullptr;
 	}
 #endif
+	s_ppcRecompilerState.stats.generatedFunctions.fetch_add(1, s_relaxedMemoryOrder);
+	s_ppcRecompilerState.stats.generatedAllocationBytes.fetch_add(ppcRecFunc->x86Size, s_relaxedMemoryOrder);
 	if (ActiveSettings::DumpRecompilerFunctionsEnabled())
 	{
 		FileStream* fs = FileStream::createFile2(ActiveSettings::GetUserDataPath(fmt::format("dump/recompiler/ppc_{:08x}.bin", ppcRecFunc->ppcAddress)));
@@ -447,7 +536,13 @@ void PPCRecompiler_recompileAtAddress(uint32 address)
 	PPCRecFunction_t* func = PPCRecompiler_recompileFunction(range, entryAddresses, functionEntryPoints, funcBoundaries);
 	if (!func)
 		return; // recompilation failed
-	PPCRecompiler_makeRecompiledFunctionActive(address, range, func, functionEntryPoints);
+	if (!PPCRecompiler_makeRecompiledFunctionActive(address, range, func, functionEntryPoints))
+	{
+		s_ppcRecompilerState.stats.publicationFailures.fetch_add(1, s_relaxedMemoryOrder);
+		PPCRecompiler_destroyUnpublishedFunction(func);
+		return;
+	}
+	s_ppcRecompilerState.stats.publishedFunctions.fetch_add(1, s_relaxedMemoryOrder);
 }
 
 void PPCRecompiler_thread()
@@ -586,7 +681,11 @@ void PPCRecompiler_deleteFunction(PPCRecFunction_t* func)
 			s_ppcRecompilerState.functionStorage.deleteRange(r.storedRange);
 		r.storedRange = nullptr;
 	}
-	// todo - free x86 code
+	// Generated code cannot be freed here: another emulated CPU thread may still
+	// be executing it. Track the retained allocation until a quiescent-point
+	// reclamation strategy is implemented.
+	s_ppcRecompilerState.stats.invalidatedFunctions.fetch_add(1, s_relaxedMemoryOrder);
+	s_ppcRecompilerState.stats.retainedInvalidatedAllocationBytes.fetch_add(func->x86Size, s_relaxedMemoryOrder);
 }
 
 void PPCRecompiler_invalidateRange(uint32 startAddr, uint32 endAddr)
@@ -662,6 +761,7 @@ void PPCRecompiler_initPlatform()
 
 void PPCRecompiler_init()
 {
+	PPCRecompiler_ResetStats();
 	s_ppcRecompilerState.recompilerEnableCount = 0;
 	if (ActiveSettings::GetCPUMode() == CPUMode::SinglecoreInterpreter)
 	{
