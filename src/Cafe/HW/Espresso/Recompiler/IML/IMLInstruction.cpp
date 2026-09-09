@@ -209,6 +209,10 @@ void IMLInstruction::CheckRegisterUsage(IMLUsedRegisters* registersUsed) const
 		registersUsed->readGPR3 = op_atomic_compare_store.regWriteValue;
 		registersUsed->writtenGPR1 = op_atomic_compare_store.regBoolOut;
 	}
+	else if (type == PPCREC_IML_TYPE_MEMORY_BARRIER)
+	{
+		// no registers affected
+	}
 	else if (type == PPCREC_IML_TYPE_CALL_IMM)
 	{
 		if (op_call_imm.regParam0.IsValid())
@@ -464,6 +468,10 @@ void IMLInstruction::RewriteGPR(const std::unordered_map<IMLRegID, IMLRegID>& tr
 		op_atomic_compare_store.regCompareValue = replaceRegisterIdMultiple(op_atomic_compare_store.regCompareValue, translationTable);
 		op_atomic_compare_store.regWriteValue = replaceRegisterIdMultiple(op_atomic_compare_store.regWriteValue, translationTable);
 		op_atomic_compare_store.regBoolOut = replaceRegisterIdMultiple(op_atomic_compare_store.regBoolOut, translationTable);
+	}
+	else if (type == PPCREC_IML_TYPE_MEMORY_BARRIER)
+	{
+		// no registers affected
 	}
 	else if (type == PPCREC_IML_TYPE_CALL_IMM)
 	{

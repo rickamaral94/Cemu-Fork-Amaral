@@ -34,7 +34,7 @@ desligados por padrão até existirem os dados temporais e testes necessários.
 | ABI | `arm64-v8a` exclusivamente |
 | Android | `minSdk 30`, `targetSdk 35`, `compileSdk 36` |
 | Renderer | Vulkan |
-| JIT | backend AArch64 existente no Cemu |
+| JIT | backend AArch64 com testes diferenciais, atomics e barreiras em validação |
 | Interface | Jetpack Compose com controles físicos e touchscreen |
 | Armazenamento | Android Storage Access Framework |
 | Drivers customizados | AdrenoTools, global e por jogo, sem root |

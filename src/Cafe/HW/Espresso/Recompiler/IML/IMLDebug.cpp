@@ -376,6 +376,10 @@ void IMLDebug_DisassembleInstruction(const IMLInstruction& inst, std::string& di
 		IMLDebug_AppendRegisterParam(strOutput, inst.op_atomic_compare_store.regWriteValue);
 		IMLDebug_AppendRegisterParam(strOutput, inst.op_atomic_compare_store.regBoolOut, true);
 	}
+	else if (inst.type == PPCREC_IML_TYPE_MEMORY_BARRIER)
+	{
+		strOutput.add("MEMORY_BARRIER");
+	}
 	else if (inst.type == PPCREC_IML_TYPE_NO_OP)
 	{
 		strOutput.add("NOP");
