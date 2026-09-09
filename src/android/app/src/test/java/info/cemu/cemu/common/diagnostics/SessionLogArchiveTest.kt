@@ -53,6 +53,7 @@ class SessionLogArchiveTest {
         )
 
         snapshotCompletedGameSessionLog(temporaryFolder.root)
+        assertTrue(currentLog.delete())
 
         val selectedLog = selectDiagnosticLog(temporaryFolder.root)
         assertEquals("last-completed-game-session", selectedLog?.source)
