@@ -52,7 +52,7 @@ há instrumentação adicionada ao caminho que executa cada bloco recompilado.
 
 ## Testes diferenciais da nightly
 
-Builds nightly executam seis casos sintéticos isolados antes do início do
+Builds nightly executam sete casos sintéticos isolados antes do início do
 título. Cada caso parte do mesmo estado, roda uma vez no interpretador e uma vez
 no JIT AArch64 e compara o estado arquitetural resultante. A cobertura inicial
 inclui:
@@ -62,7 +62,8 @@ inclui:
 - load/store com validação de endianness;
 - ponto flutuante e Paired Singles;
 - reserva atômica `lwarx`/`stwcx.` com sucesso;
-- falha de `stwcx.` quando o valor reservado foi alterado.
+- falha de `stwcx.` quando o valor reservado foi alterado;
+- smoke test de tradução para `eieio`, `sync` e `isync`.
 
 Os casos atômicos também verificam a limpeza da reserva e todos os bits de CR0.
 O bit SO de CR0 deve copiar `XER[SO]`; ele não pode reutilizar o valor anterior
@@ -80,9 +81,27 @@ marque o endereço de escape `0x00000000` para compilação assíncrona. Essa
 isolação é obrigatória: o autoteste não pode alterar a fila nem os metadados do
 JIT usados pelo título real.
 
+## Barreiras de memória
+
+`sync` e `eieio` agora geram uma operação IML com efeito colateral. No backend
+AArch64 ela é emitida como `DMB ISH`, ordenando de forma conservadora os acessos
+à RAM compartilhada pelos núcleos emulados. O interpretador usa uma barreira
+sequencialmente consistente equivalente. O backend x86-64 preserva o contrato
+genérico do IML com `MFENCE`.
+
+O smoke test diferencial comprova que as três instruções são decodificadas, que
+o bloco é gerado pelo backend AArch64 e que o estado arquitetural continua
+equivalente ao interpretador. Ele não comprova sozinho ordenação entre núcleos;
+essa propriedade exige um teste litmus concorrente e repetido em dispositivo.
+
+`isync` continua sem emitir `ISB` do host. Um `ISB` AArch64 sincronizaria a busca
+das instruções AArch64, mas não invalidaria código PowerPC já traduzido. A
+semântica de `isync` será fechada junto de `icbi`, invalidação do JIT e
+self-modifying code para evitar uma correção apenas aparente.
+
 ## Critério para o próximo incremento
 
-Ampliar gradualmente os casos diferenciais para atomics, exceções, alinhamento,
-barreiras e resultados de ponto flutuante especiais. Nenhuma otimização do
+Ampliar gradualmente os casos diferenciais para exceções, alinhamento,
+invalidação, concorrência e resultados de ponto flutuante especiais. Nenhuma otimização do
 emissor, alocador de registradores ou linking de blocos será aprovada apenas por
 FPS médio.

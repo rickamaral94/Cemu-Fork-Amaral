@@ -139,6 +139,7 @@ struct AArch64GenContext_t : CodeGenerator
 	bool load(IMLInstruction* imlInstruction, bool indexed);
 	bool store(IMLInstruction* imlInstruction, bool indexed);
 	void atomic_cmp_store(IMLInstruction* imlInstruction);
+	void memory_barrier();
 	bool macro(IMLInstruction* imlInstruction);
 	void call_imm(IMLInstruction* imlInstruction);
 	bool fpr_load(IMLInstruction* imlInstruction, bool indexed);
@@ -1139,6 +1140,13 @@ void AArch64GenContext_t::atomic_cmp_store(IMLInstruction* imlInstruction)
 	}
 }
 
+void AArch64GenContext_t::memory_barrier()
+{
+	// Guest cores run on separate host threads and access the same guest RAM.
+	// DMB ISH orders those accesses across cores in the inner-shareable domain.
+	dmb(ISH);
+}
+
 bool AArch64GenContext_t::fpr_load(IMLInstruction* imlInstruction, bool indexed)
 {
 	const IMLReg& dataReg = imlInstruction->op_storeLoad.registerData;
@@ -1539,6 +1547,10 @@ bool PPCRecompiler_generateAArch64Code(struct PPCRecFunction_t* PPCRecFunction, 
 			else if (imlInstruction->type == PPCREC_IML_TYPE_ATOMIC_CMP_STORE)
 			{
 				aarch64GenContext.atomic_cmp_store(imlInstruction);
+			}
+			else if (imlInstruction->type == PPCREC_IML_TYPE_MEMORY_BARRIER)
+			{
+				aarch64GenContext.memory_barrier();
 			}
 			else if (imlInstruction->type == PPCREC_IML_TYPE_CALL_IMM)
 			{

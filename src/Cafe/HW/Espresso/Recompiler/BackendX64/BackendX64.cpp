@@ -60,6 +60,14 @@ static x86Assembler64::GPR64 _reg64_from_reg32(x86Assembler64::GPR32 regId)
 	return (x86Assembler64::GPR64)regId;
 }
 
+static void PPCRecompilerX64Gen_imlInstruction_memory_barrier(x64GenContext_t* x64GenContext)
+{
+	// MFENCE: preserve the generic IML contract on the desktop backend too.
+	x64Gen_writeU8(x64GenContext, 0x0F);
+	x64Gen_writeU8(x64GenContext, 0xAE);
+	x64Gen_writeU8(x64GenContext, 0xF0);
+}
+
 X86Cond _x86Cond(IMLCondition imlCond)
 {
 	switch (imlCond)
@@ -1447,6 +1455,10 @@ bool PPCRecompiler_generateX64Code(PPCRecFunction_t* PPCRecFunction, ppcImlGenCo
 			{
 				PPCRecompilerX64Gen_imlInstruction_atomic_cmp_store(PPCRecFunction, ppcImlGenContext, &x64GenContext, imlInstruction);
 			}
+			else if (imlInstruction->type == PPCREC_IML_TYPE_MEMORY_BARRIER)
+			{
+				PPCRecompilerX64Gen_imlInstruction_memory_barrier(&x64GenContext);
+			}
 			else if (imlInstruction->type == PPCREC_IML_TYPE_CALL_IMM)
 			{
 				PPCRecompilerX64Gen_imlInstruction_call_imm(PPCRecFunction, ppcImlGenContext, &x64GenContext, imlInstruction);
@@ -1669,4 +1681,3 @@ void PPCRecompilerX64Gen_generateRecompilerInterfaceFunctions()
 	PPCRecompiler_leaveRecompilerCode_visited = (void ATTR_MS_ABI (*)())PPCRecompilerX64Gen_generateLeaveRecompilerCode();
 	cemu_assert_debug(PPCRecompiler_leaveRecompilerCode_unvisited != PPCRecompiler_leaveRecompilerCode_visited);
 }
-

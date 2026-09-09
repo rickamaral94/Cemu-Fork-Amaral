@@ -228,6 +228,7 @@ enum
 
 	// atomic
 	PPCREC_IML_TYPE_ATOMIC_CMP_STORE,
+	PPCREC_IML_TYPE_MEMORY_BARRIER,
 
 	// function call
 	PPCREC_IML_TYPE_CALL_IMM,			// call to fixed immediate address
@@ -692,6 +693,12 @@ struct IMLInstruction
 		this->op_atomic_compare_store.regCompareValue = regCompareValue;
 		this->op_atomic_compare_store.regWriteValue = regWriteValue;
 		this->op_atomic_compare_store.regBoolOut = regSuccessOutput;
+	}
+
+	void make_memory_barrier()
+	{
+		this->type = PPCREC_IML_TYPE_MEMORY_BARRIER;
+		this->operation = PPCREC_IML_OP_INVALID;
 	}
 
 	void make_call_imm(uintptr_t callAddress, IMLReg param0, IMLReg param1, IMLReg param2, IMLReg regReturn)

@@ -82,6 +82,11 @@ invalidado que ainda não podem ser liberadas com segurança durante a execuçã
 crescimento contínuo em uma sessão prolongada exige investigação, não uma
 liberação imediata insegura.
 
+Na build de barreiras, o resumo diferencial deve informar `passed=7 failed=0
+total=7`, incluindo `case=memory-barrier-smoke`. Esse caso confirma tradução e
+execução de `eieio`, `sync` e `isync`; não substitui o futuro teste concorrente de
+ordenação entre núcleos.
+
 ## Método de performance
 
 Usar AB/BA, aquecimento controlado, no mínimo cinco repetições quando o teste for

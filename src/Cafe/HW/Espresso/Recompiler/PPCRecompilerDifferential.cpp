@@ -100,8 +100,21 @@ constexpr std::array<uint32, 5> kAtomicCompareFailureCode{
 	kReturnToInterpreter,
 };
 
+constexpr std::array<uint32, 7> kMemoryBarrierCode{
+	EncodeD(14, 4, 0, 0x1357),          // li r4, 0x1357
+	EncodeD(36, 4, 3, 0),               // stw r4, 0(r3)
+	EncodeX(31, 0, 0, 0, 854),          // eieio
+	EncodeD(32, 5, 3, 0),               // lwz r5, 0(r3)
+	EncodeX(31, 0, 0, 0, 598),          // sync
+	EncodeX(19, 0, 0, 0, 150),          // isync
+	kReturnToInterpreter,
+};
+
 static_assert(kAtomicSuccessCode[0] == 0x7C801828); // lwarx r4, 0, r3
 static_assert(kAtomicSuccessCode[2] == 0x7CA0192D); // stwcx. r5, 0, r3
+static_assert(kMemoryBarrierCode[2] == 0x7C0006AC); // eieio
+static_assert(kMemoryBarrierCode[4] == 0x7C0004AC); // sync
+static_assert(kMemoryBarrierCode[5] == 0x4C00012C); // isync
 
 using StateSetup = void (*)(PPCInterpreter_t&, MPTR);
 using MemorySetup = void (*)(MPTR);
@@ -155,6 +168,11 @@ void SetupAtomicCompareFailure(PPCInterpreter_t& state, MPTR dataAddress)
 	state.xer_so = 0;
 }
 
+void SetupMemoryBarrier(PPCInterpreter_t& state, MPTR dataAddress)
+{
+	state.gpr[3] = dataAddress;
+}
+
 void PrepareLoadStoreMemory(MPTR dataAddress)
 {
 	memory_writeU32(dataAddress, 0x11223344);
@@ -164,6 +182,11 @@ void PrepareLoadStoreMemory(MPTR dataAddress)
 void PrepareAtomicMemory(MPTR dataAddress)
 {
 	memory_writeU32(dataAddress, 0x10203040);
+}
+
+void PrepareMemoryBarrierMemory(MPTR dataAddress)
+{
+	memory_writeU32(dataAddress, 0);
 }
 
 std::string ValidateInteger(const PPCInterpreter_t& state, MPTR)
@@ -233,6 +256,17 @@ std::string ValidateAtomicCompareFailure(const PPCInterpreter_t& state, MPTR dat
 			"unexpected atomic-failure result r4={:08x} r5={:08x} memory={:08x} reservation=[{:08x},{:08x}] cr0=[{},{},{},{}]",
 			state.gpr[4], state.gpr[5], storedValue, state.reservedMemAddr,
 			state.reservedMemValue, state.cr[0], state.cr[1], state.cr[2], state.cr[3]);
+	}
+	return {};
+}
+
+std::string ValidateMemoryBarrier(const PPCInterpreter_t& state, MPTR dataAddress)
+{
+	const uint32 storedValue = memory_readU32(dataAddress);
+	if (state.gpr[4] != 0x1357 || state.gpr[5] != 0x1357 || storedValue != 0x1357)
+	{
+		return fmt::format("unexpected barrier result r4={:08x} r5={:08x} memory={:08x}",
+			state.gpr[4], state.gpr[5], storedValue);
 	}
 	return {};
 }
@@ -407,13 +441,14 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 
 	const MPTR codeAddress = allocation.GetMPTR();
 	const MPTR dataAddress = codeAddress + kTestDataOffset;
-	const std::array<DifferentialCase, 6> cases{
+	const std::array<DifferentialCase, 7> cases{
 		DifferentialCase{"integer-cr-rotate", kIntegerCode, SetupNoState, nullptr, ValidateInteger, false},
 		DifferentialCase{"conditional-branch", kBranchCode, SetupNoState, nullptr, ValidateBranch, false},
 		DifferentialCase{"load-store-endian", kLoadStoreCode, SetupLoadStore, PrepareLoadStoreMemory, ValidateLoadStore, true},
 		DifferentialCase{"floating-paired-single", kFloatingPointCode, SetupFloatingPoint, nullptr, ValidateFloatingPoint, false},
 		DifferentialCase{"atomic-reservation-success", kAtomicSuccessCode, SetupAtomicSuccess, PrepareAtomicMemory, ValidateAtomicSuccess, false},
 		DifferentialCase{"atomic-reservation-compare-failure", kAtomicCompareFailureCode, SetupAtomicCompareFailure, PrepareAtomicMemory, ValidateAtomicCompareFailure, false},
+		DifferentialCase{"memory-barrier-smoke", kMemoryBarrierCode, SetupMemoryBarrier, PrepareMemoryBarrierMemory, ValidateMemoryBarrier, false},
 	};
 
 	uint32 passedCount = 0;

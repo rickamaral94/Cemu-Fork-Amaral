@@ -775,6 +775,16 @@ bool PPCRecompilerImlGen_ISYNC(ppcImlGenContext_t* ppcImlGenContext, uint32 opco
 
 bool PPCRecompilerImlGen_SYNC(ppcImlGenContext_t* ppcImlGenContext, uint32 opcode)
 {
+	ppcImlGenContext->emitInst().make_memory_barrier();
+	return true;
+}
+
+bool PPCRecompilerImlGen_EIEIO(ppcImlGenContext_t* ppcImlGenContext, uint32 opcode)
+{
+	// EIEIO has weaker guarantees than SYNC on PowerPC. Use the same full
+	// barrier for now: it is conservative and avoids relying on the host's
+	// weaker memory ordering for shared guest memory.
+	ppcImlGenContext->emitInst().make_memory_barrier();
 	return true;
 }
 
@@ -2503,6 +2513,9 @@ bool PPCRecompiler_decodePPCInstruction(ppcImlGenContext_t* ppcImlGenContext)
 		case 824:
 			if (PPCRecompilerImlGen_SRAWI(ppcImlGenContext, opcode) == false)
 				unsupportedInstructionFound = true;
+			break;
+		case 854:
+			PPCRecompilerImlGen_EIEIO(ppcImlGenContext, opcode);
 			break;
 		case 918: // STHBRX
 			if (!PPCRecompilerImlGen_STORE_INDEXED(ppcImlGenContext, opcode, 16, false, true))
