@@ -68,6 +68,12 @@ contadores do autoteste são zerados em seguida para não contaminar a telemetri
 da sessão. A linha `JIT ARM64 differential` no log informa `PASS`, `FAIL` ou
 `SKIP`. O recurso permanece desligado em builds stable/release.
 
+O caminho de referência do interpretador é executado com o recompilador
+temporariamente suspenso. Isso impede que o `blr` usado para encerrar cada caso
+marque o endereço de escape `0x00000000` para compilação assíncrona. Essa
+isolação é obrigatória: o autoteste não pode alterar a fila nem os metadados do
+JIT usados pelo título real.
+
 ## Critério para o próximo incremento
 
 Ampliar gradualmente os casos diferenciais para atomics, exceções, alinhamento,

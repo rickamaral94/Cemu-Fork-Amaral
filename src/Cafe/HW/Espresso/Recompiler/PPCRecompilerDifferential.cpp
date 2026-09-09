@@ -202,11 +202,18 @@ std::string CompareArchitecturalState(const PPCInterpreter_t& interpreter, const
 
 bool ExecuteInterpreter(PPCInterpreter_t& state, size_t instructionLimit)
 {
+	// Branch instructions executed by the interpreter normally notify the JIT.
+	// The test terminates with `blr` to LR=0, which is the recompiler escape
+	// address. Letting that notification through marks address zero as visited
+	// and queues it for asynchronous compilation after the test, even though it
+	// is not guest code. Keep the reference run isolated from all JIT state.
+	PPCRecompiler_Disable();
 	PPCInterpreter_t* previousInstance = PPCInterpreter_getCurrentInstance();
 	PPCInterpreter_setCurrentInstance(&state);
 	for (size_t i = 0; i < instructionLimit && state.instructionPointer != 0; ++i)
 		PPCInterpreterSlim_executeInstruction(&state);
 	PPCInterpreter_setCurrentInstance(previousInstance);
+	PPCRecompiler_Enable();
 	return state.instructionPointer == 0;
 }
 
