@@ -65,6 +65,12 @@ O aplicativo mantém no máximo os cinco pacotes mais recentes em sua pasta de
 diagnósticos. Nada é enviado automaticamente: o compartilhamento sempre depende
 de confirmação explícita no seletor do Android.
 
+Para validar a apresentação Vulkan, registre a linha `Vulkan: Present mode` do
+log. Ela diferencia o modo solicitado na interface, o modo efetivamente usado,
+os modos anunciados pelo driver e se houve fallback. Um fallback para FIFO é
+válido quando Immediate ou Mailbox não estiver disponível; ele não deve ser
+descrito como VSync desligado ou triple buffering efetivo no resultado do teste.
+
 ## Método de performance
 
 Usar AB/BA, aquecimento controlado, no mínimo cinco repetições quando o teste for
