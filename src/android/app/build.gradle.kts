@@ -146,6 +146,11 @@ android {
             versionNameSuffix = "-nightly"
             resValue("string", "app_name", "Cemu Fork Amaral Nightly")
             matchingFallbacks += listOf("release")
+            externalNativeBuild {
+                cmake {
+                    arguments("-DCEMU_ENABLE_JIT_DIFFERENTIAL_TESTS=ON")
+                }
+            }
         }
     }
 

@@ -73,8 +73,10 @@ descrito como VSync desligado ou triple buffering efetivo no resultado do teste.
 
 Para validar o JIT ARM64, execute uma sessão de pelo menos 30 minutos, encerre o
 jogo pela opção **Sair** do menu do emulador e compartilhe o pacote de diagnóstico
-depois de reabrir o aplicativo. O log deve conter `JIT ARM64 stats`. Registre os
-campos `backendFailures`, `publicationFailures`, `invalidatedFunctions` e
+depois de reabrir o aplicativo. Em uma nightly, o log deve conter
+`JIT ARM64 differential: result=PASS` antes do carregamento do título e
+`JIT ARM64 stats` no encerramento. Registre os campos `backendFailures`,
+`publicationFailures`, `invalidatedFunctions` e
 `retainedInvalidatedAllocationBytes`. A retenção representa alocações de código
 invalidado que ainda não podem ser liberadas com segurança durante a execução;
 crescimento contínuo em uma sessão prolongada exige investigação, não uma

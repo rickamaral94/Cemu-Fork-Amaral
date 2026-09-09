@@ -173,6 +173,10 @@ void PPCRecompiler_Shutdown();
 PPCRecompilerStats PPCRecompiler_GetStats();
 void PPCRecompiler_LogStats();
 
+#ifdef CEMU_ENABLE_JIT_DIFFERENTIAL_TESTS
+void PPCRecompiler_RunAArch64DifferentialTests();
+#endif
+
 void PPCRecompiler_Enable();
 void PPCRecompiler_Disable();
 
