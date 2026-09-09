@@ -52,7 +52,7 @@ há instrumentação adicionada ao caminho que executa cada bloco recompilado.
 
 ## Testes diferenciais da nightly
 
-Builds nightly executam quatro casos sintéticos isolados antes do início do
+Builds nightly executam seis casos sintéticos isolados antes do início do
 título. Cada caso parte do mesmo estado, roda uma vez no interpretador e uma vez
 no JIT AArch64 e compara o estado arquitetural resultante. A cobertura inicial
 inclui:
@@ -60,7 +60,13 @@ inclui:
 - operações inteiras, Condition Register e rotação;
 - branch condicional;
 - load/store com validação de endianness;
-- ponto flutuante e Paired Singles.
+- ponto flutuante e Paired Singles;
+- reserva atômica `lwarx`/`stwcx.` com sucesso;
+- falha de `stwcx.` quando o valor reservado foi alterado.
+
+Os casos atômicos também verificam a limpeza da reserva e todos os bits de CR0.
+O bit SO de CR0 deve copiar `XER[SO]`; ele não pode reutilizar o valor anterior
+de CR0.
 
 O código sintético usa uma pequena alocação temporária no code cave, nunca é
 publicado na tabela de saltos do jogo e é liberado antes de o título começar. Os
