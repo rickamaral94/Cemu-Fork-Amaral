@@ -51,6 +51,12 @@ struct
 	std::atomic_bool workerThreadStopSignal{false};
 	// function storage
 	RangeStore<PPCRecFunction_t*, uint32, 7703, 0x2000> functionStorage;
+#if defined(__aarch64__)
+	// Published code can still be executing when it is invalidated. Keep every
+	// allocation alive until title shutdown, after all emulated CPU threads have
+	// reached a quiescent point.
+	std::vector<PPCRecFunction_t*> publishedAArch64Functions;
+#endif
 	struct
 	{
 		std::atomic_uint64_t compileAttempts{0};
@@ -109,6 +115,25 @@ void PPCRecompiler_destroyUnpublishedFunction(PPCRecFunction_t* func)
 	s_ppcRecompilerState.stats.discardedUnpublishedAllocationBytes.fetch_add(func->x86Size, s_relaxedMemoryOrder);
 #endif
 	delete func;
+}
+
+void PPCRecompiler_reclaimPublishedAArch64FunctionsAtShutdown()
+{
+#if defined(__aarch64__)
+	uint64 reclaimedAllocationBytes = 0;
+	for (PPCRecFunction_t* func : s_ppcRecompilerState.publishedAArch64Functions)
+	{
+		reclaimedAllocationBytes += func->x86Size;
+		PPCRecompiler_cleanupAArch64Code(func->x86Code, func->x86Size);
+		delete func;
+	}
+
+	const uint64 reclaimedFunctions = s_ppcRecompilerState.publishedAArch64Functions.size();
+	s_ppcRecompilerState.publishedAArch64Functions.clear();
+	cemuLog_log(LogType::Force,
+		"JIT ARM64 shutdown cleanup: reclaimedFunctions={} reclaimedAllocationBytes={}",
+		reclaimedFunctions, reclaimedAllocationBytes);
+#endif
 }
 }
 
@@ -506,6 +531,9 @@ bool PPCRecompiler_makeRecompiledFunctionActive(uint32 initialEntryPoint, PPCFun
 	{
 		r.storedRange = s_ppcRecompilerState.functionStorage.storeRange(ppcRecFunc, r.ppcAddress, r.ppcAddress + r.ppcSize);
 	}
+#if defined(__aarch64__)
+	s_ppcRecompilerState.publishedAArch64Functions.emplace_back(ppcRecFunc);
+#endif
 	s_ppcRecompilerState.recompilerSpinlock.unlock();
 	return true;
 }
@@ -821,6 +849,11 @@ void PPCRecompiler_Shutdown()
     s_ppcRecompilerState.invalidationRanges.clear();
     // clean range store
     s_ppcRecompilerState.functionStorage.clear();
+	// CafeSystem removes every active PowerPC thread before calling shutdown and
+	// the recompiler worker has been joined above. No generated function can be
+	// executing now, so AArch64 mappings retained during invalidation are safe to
+	// release together with the functions that remained active.
+	PPCRecompiler_reclaimPublishedAArch64FunctionsAtShutdown();
     // clean up memory
     uint32 numBlocks = PPCRecompiler_GetNumAddressSpaceBlocks();
     for(uint32 i=0; i<numBlocks; i++)

@@ -41,6 +41,42 @@ class SessionLogArchiveTest {
     }
 
     @Test
+    fun `completed game snapshot is preferred over an older crash`() {
+        temporaryFolder.newFile(LAST_CRASH_SESSION_LOG_FILE_NAME)
+            .writeText("Unhandled exception from an older build")
+        val currentLog = temporaryFolder.newFile(CURRENT_LOG_FILE_NAME)
+        currentLog.writeText(
+            "------- Loaded title -------\n" +
+                "TitleId: 0005000010143500\n" +
+                "JIT ARM64 shutdown cleanup: reclaimedFunctions=42 " +
+                "reclaimedAllocationBytes=4096",
+        )
+
+        snapshotCompletedGameSessionLog(temporaryFolder.root)
+        assertTrue(currentLog.delete())
+
+        val selectedLog = selectDiagnosticLog(temporaryFolder.root)
+        assertEquals("last-completed-game-session", selectedLog?.source)
+        assertTrue(selectedLog?.file?.readText()?.contains("reclaimedFunctions=42") == true)
+    }
+
+    @Test
+    fun `completed game snapshot keeps tail and does not move active log`() {
+        val currentLog = temporaryFolder.newFile(CURRENT_LOG_FILE_NAME)
+        val header = "------- Loaded title -------\nTitleId: 0005000010143500\n"
+        val tail = "JIT ARM64 shutdown cleanup: reclaimedFunctions=7"
+        currentLog.writeText(header + "x".repeat(100_000) + tail)
+
+        snapshotCompletedGameSessionLog(temporaryFolder.root, maxBytes = 70_000)
+
+        val snapshot = temporaryFolder.root.resolve(LAST_COMPLETED_GAME_SESSION_LOG_FILE_NAME)
+        assertTrue(currentLog.exists())
+        assertTrue(snapshot.length() <= 70_000)
+        assertTrue(snapshot.readText().startsWith(header))
+        assertTrue(snapshot.readText().endsWith(tail))
+    }
+
+    @Test
     fun `previous crash is preferred over an older game session`() {
         temporaryFolder.newFile(PREVIOUS_SESSION_LOG_FILE_NAME)
             .writeText("Unhandled exception from java code")

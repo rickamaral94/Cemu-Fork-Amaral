@@ -11,6 +11,7 @@ const val CURRENT_LOG_FILE_NAME = "log.txt"
 const val PREVIOUS_SESSION_LOG_FILE_NAME = "previous-session.log"
 const val LAST_GAME_SESSION_LOG_FILE_NAME = "last-game-session.log"
 const val LAST_CRASH_SESSION_LOG_FILE_NAME = "last-crash-session.log"
+const val LAST_COMPLETED_GAME_SESSION_LOG_FILE_NAME = "last-completed-game-session.log"
 
 private const val ARCHIVE_TRUNCATION_MARKER = "\n--- archived log truncated ---\n"
 private const val ARCHIVE_HEADER_BYTES = 64 * 1024
@@ -54,6 +55,7 @@ fun compactArchivedSessionLogs(
         PREVIOUS_SESSION_LOG_FILE_NAME,
         LAST_GAME_SESSION_LOG_FILE_NAME,
         LAST_CRASH_SESSION_LOG_FILE_NAME,
+        LAST_COMPLETED_GAME_SESSION_LOG_FILE_NAME,
     )
 
     for (fileName in archivedLogs) {
@@ -68,11 +70,29 @@ fun compactArchivedSessionLogs(
     }
 }
 
+fun snapshotCompletedGameSessionLog(
+    directory: File,
+    maxBytes: Long = MAX_DIAGNOSTIC_LOG_BYTES,
+) {
+    val currentLog = directory.resolve(CURRENT_LOG_FILE_NAME)
+    if (!currentLog.isNonEmptyFile() || !containsGameSessionMarker(currentLog)) {
+        return
+    }
+
+    writeBoundedArchivedLog(
+        source = currentLog,
+        destination = directory.resolve(LAST_COMPLETED_GAME_SESSION_LOG_FILE_NAME),
+        maxBytes = maxBytes,
+    )
+}
+
 fun selectDiagnosticLog(directory: File): DiagnosticLogSource? {
     val currentLog = directory.resolve(CURRENT_LOG_FILE_NAME)
     val previousSessionLog = directory.resolve(PREVIOUS_SESSION_LOG_FILE_NAME)
     val lastGameSessionLog = directory.resolve(LAST_GAME_SESSION_LOG_FILE_NAME)
     val lastCrashSessionLog = directory.resolve(LAST_CRASH_SESSION_LOG_FILE_NAME)
+    val lastCompletedGameSessionLog =
+        directory.resolve(LAST_COMPLETED_GAME_SESSION_LOG_FILE_NAME)
 
     return when {
         currentLog.isNonEmptyFile() && containsGameSessionMarker(currentLog) ->
@@ -83,6 +103,9 @@ fun selectDiagnosticLog(directory: File): DiagnosticLogSource? {
 
         previousSessionLog.isNonEmptyFile() && containsGameSessionMarker(previousSessionLog) ->
             DiagnosticLogSource(previousSessionLog, "previous-game-session")
+
+        lastCompletedGameSessionLog.isNonEmptyFile() ->
+            DiagnosticLogSource(lastCompletedGameSessionLog, "last-completed-game-session")
 
         lastCrashSessionLog.isNonEmptyFile() ->
             DiagnosticLogSource(lastCrashSessionLog, "last-crash-session")

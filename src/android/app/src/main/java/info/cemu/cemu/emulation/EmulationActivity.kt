@@ -14,7 +14,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import info.cemu.cemu.BuildConfig
+import info.cemu.cemu.common.android.context.internalFolder
 import info.cemu.cemu.common.android.inputevent.isFromPhysicalController
+import info.cemu.cemu.common.diagnostics.snapshotCompletedGameSessionLog
 import info.cemu.cemu.common.settings.AppSettingsStore
 import info.cemu.cemu.common.ui.components.ActivityContent
 import info.cemu.cemu.common.ui.localization.TranslatableContent
@@ -25,6 +27,7 @@ import info.cemu.cemu.emulation.input.DeviceMotionHandler
 import info.cemu.cemu.emulation.input.HotkeyManager
 import info.cemu.cemu.emulation.input.InputHandler
 import info.cemu.cemu.emulation.input.NativeInputDeviceListener
+import info.cemu.cemu.nativeinterface.NativeEmulation
 import info.cemu.cemu.nativeinterface.NativeLogging
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -172,7 +175,9 @@ class EmulationActivity : AppCompatActivity() {
 
     private fun onQuit() {
         NativeLogging.logRecompilerStats()
+        NativeEmulation.shutdownEmulation()
         NativeLogging.waitForFlush()
+        runCatching { snapshotCompletedGameSessionLog(internalFolder()) }
         finish()
         exitProcess(0)
     }

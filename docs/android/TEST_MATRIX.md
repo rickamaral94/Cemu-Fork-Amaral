@@ -93,6 +93,20 @@ bits em RAM normal. Ele não testa atomics desalinhados nem comprova recuperaç�
 de exceções de memória; provocar uma falha de host antes dessa infraestrutura
 poderia encerrar o APK em vez de produzir um resultado diagnóstico controlado.
 
+Para validar a reclamação do code cache no ponto de quiescência, inicie um
+título, jogue por pelo menos dez minutos e use **Sair** no menu do emulador. A
+ação encerra o processo Android depois do shutdown nativo. Reabra o aplicativo,
+gere o primeiro pacote de diagnóstico e repita o ciclo. Cada pacote deve
+registrar `JIT ARM64 shutdown cleanup` com `reclaimedFunctions` e
+`reclaimedAllocationBytes` maiores que zero. A segunda inicialização deve
+continuar funcional e executar novamente os oito casos diferenciais. Essa
+validação comprova a liberação entre execuções; não comprova reutilização segura
+de código invalidado durante uma sessão ainda ativa.
+
+O campo `log.source` deve ser `last-completed-game-session`,
+`previous-game-session` ou `current-game-session`. `last-crash-session` indica
+um crash histórico preservado e não serve como evidência deste ciclo de teste.
+
 ## Método de performance
 
 Usar AB/BA, aquecimento controlado, no mínimo cinco repetições quando o teste for
