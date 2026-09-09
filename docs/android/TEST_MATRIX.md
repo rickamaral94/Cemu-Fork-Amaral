@@ -87,6 +87,12 @@ total=7`, incluindo `case=memory-barrier-smoke`. Esse caso confirma tradução e
 execução de `eieio`, `sync` e `isync`; não substitui o futuro teste concorrente de
 ordenação entre núcleos.
 
+Na build de alinhamento, o resumo deve informar `passed=8 failed=0 total=8`,
+incluindo `case=unaligned-load-store`. O caso cobre acessos comuns de 16, 32 e 64
+bits em RAM normal. Ele não testa atomics desalinhados nem comprova recuperação
+de exceções de memória; provocar uma falha de host antes dessa infraestrutura
+poderia encerrar o APK em vez de produzir um resultado diagnóstico controlado.
+
 ## Método de performance
 
 Usar AB/BA, aquecimento controlado, no mínimo cinco repetições quando o teste for
