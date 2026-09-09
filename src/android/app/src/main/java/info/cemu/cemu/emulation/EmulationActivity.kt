@@ -171,6 +171,7 @@ class EmulationActivity : AppCompatActivity() {
     }
 
     private fun onQuit() {
+        NativeLogging.logRecompilerStats()
         NativeLogging.waitForFlush()
         finish()
         exitProcess(0)
