@@ -93,6 +93,15 @@ bits em RAM normal. Ele não testa atomics desalinhados nem comprova recuperaç�
 de exceções de memória; provocar uma falha de host antes dessa infraestrutura
 poderia encerrar o APK em vez de produzir um resultado diagnóstico controlado.
 
+Para validar a reclamação do code cache no ponto de quiescência, inicie um
+título, jogue por pelo menos dez minutos, saia pelo menu do emulador e repita o
+ciclo sem encerrar o aplicativo. Cada saída deve registrar
+`JIT ARM64 shutdown cleanup` com `reclaimedFunctions` e
+`reclaimedAllocationBytes` maiores que zero. A segunda inicialização deve
+continuar funcional e executar novamente os oito casos diferenciais. Essa
+validação comprova a liberação entre títulos; não comprova reutilização segura
+de código invalidado durante uma sessão ainda ativa.
+
 ## Método de performance
 
 Usar AB/BA, aquecimento controlado, no mínimo cinco repetições quando o teste for

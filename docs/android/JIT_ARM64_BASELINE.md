@@ -23,7 +23,8 @@ camada de tradução não será criada sem evidência de que ele é insuficiente
 
 `PPCRecompiler_deleteFunction()` não pode liberar imediatamente uma função já
 publicada: outro núcleo emulado pode ainda estar executando o código nativo. A
-implementação anterior também não media essas alocações retidas.
+implementação anterior também não media essas alocações retidas nem as liberava
+ao encerrar o título.
 
 O primeiro incremento adiciona contadores fora do hot path de execução e corrige
 dois casos seguros:
@@ -32,10 +33,17 @@ dois casos seguros:
 2. em AArch64, o código gerado é liberado quando a publicação falha, pois nunca
    foi inserido na tabela de saltos nem executado.
 
-Código publicado e posteriormente invalidado continua retido até existir um
-ponto de quiescência comprovado. A próxima decisão de arquitetura deve comparar
-reclamação por época/RCU, barreira global dos núcleos emulados e liberação apenas
-no encerramento do título.
+Código publicado e posteriormente invalidado continua retido durante a sessão.
+Todo código AArch64 publicado agora é registrado uma única vez e liberado no
+encerramento do título. Esse ponto é seguro porque `CafeSystem` já removeu todas
+as threads PowerPC e `PPCRecompiler_Shutdown()` já encerrou e aguardou o worker
+de compilação antes da liberação.
+
+A linha `JIT ARM64 shutdown cleanup` registra a quantidade de funções e bytes
+reclamados. Isso impede o acúmulo entre títulos iniciados no mesmo processo, mas
+não limita o crescimento causado por muitas invalidações dentro de uma única
+sessão longa. Reutilização durante a execução ainda exige uma estratégia por
+época/RCU ou outra barreira global comprovada.
 
 ## Telemetria
 
@@ -120,7 +128,8 @@ test.
 
 ## Critério para o próximo incremento
 
-Ampliar gradualmente os casos diferenciais para exceções recuperáveis,
-invalidação, concorrência e resultados de ponto flutuante especiais. Nenhuma otimização do
+Validar a reclamação no encerramento em ciclos repetidos de abrir/sair do título
+e ampliar gradualmente os casos diferenciais para invalidação funcional,
+exceções recuperáveis, concorrência e resultados de ponto flutuante especiais. Nenhuma otimização do
 emissor, alocador de registradores ou linking de blocos será aprovada apenas por
 FPS médio.
