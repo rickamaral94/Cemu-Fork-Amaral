@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 option(ENABLE_VCPKG "Enable the vcpkg package manager" ON)
 option(MACOS_BUNDLE "The executable when built on macOS will be created as an application bundle" OFF)
 option(ALLOW_PORTABLE "Allow Cemu to be run in portable mode" ON)
+option(CEMU_ENABLE_JIT_DIFFERENTIAL_TESTS "Run isolated interpreter/JIT differential tests before launching a title" OFF)
 
 # used by CI script to set version:
 set(EMULATOR_VERSION_MAJOR "0" CACHE STRING "")
@@ -80,6 +81,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_compile_definitions($<$<CONFIG:Debug>:CEMU_DEBUG_ASSERT>) # if build type is debug, set CEMU_DEBUG_ASSERT
+
+if(CEMU_ENABLE_JIT_DIFFERENTIAL_TESTS)
+	add_compile_definitions(CEMU_ENABLE_JIT_DIFFERENTIAL_TESTS)
+endif()
 
 add_definitions(-DEMULATOR_VERSION_MAJOR=${EMULATOR_VERSION_MAJOR})
 add_definitions(-DEMULATOR_VERSION_MINOR=${EMULATOR_VERSION_MINOR})
@@ -276,6 +281,9 @@ if (CMAKE_OSX_ARCHITECTURES)
 	set(CEMU_ARCHITECTURE ${CMAKE_OSX_ARCHITECTURES})
 else()
 	set(CEMU_ARCHITECTURE ${CMAKE_SYSTEM_PROCESSOR})
+endif()
+if(CEMU_ENABLE_JIT_DIFFERENTIAL_TESTS AND NOT CEMU_ARCHITECTURE MATCHES "(aarch64)|(AARCH64)|(arm64)|(ARM64)")
+	message(FATAL_ERROR "CEMU_ENABLE_JIT_DIFFERENTIAL_TESTS requires an AArch64 target")
 endif()
 if(CEMU_ARCHITECTURE MATCHES "(aarch64)|(AARCH64)|(arm64)|(ARM64)")
 	add_subdirectory("dependencies/xbyak_aarch64" EXCLUDE_FROM_ALL)

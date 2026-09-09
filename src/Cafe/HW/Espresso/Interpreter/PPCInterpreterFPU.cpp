@@ -430,7 +430,7 @@ void PPCInterpreter_FMUL(PPCInterpreter_t* hCPU, uint32 Opcode)
 
 	int frD, frA, frB, frC;
 	PPC_OPC_TEMPL_A(Opcode, frD, frA, frB, frC);
-	PPC_ASSERT(frC == 0);
+	PPC_ASSERT(frB == 0);
 
 	hCPU->fpr[frD].fpr = hCPU->fpr[frA].fpr * hCPU->fpr[frC].fpr;
 

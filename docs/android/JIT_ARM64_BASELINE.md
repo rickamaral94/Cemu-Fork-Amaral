@@ -50,10 +50,33 @@ Ao sair pelo menu do emulador, o log registra uma linha `JIT ARM64 stats` com:
 Os contadores são atualizados durante compilação, publicação e invalidação. Não
 há instrumentação adicionada ao caminho que executa cada bloco recompilado.
 
+## Testes diferenciais da nightly
+
+Builds nightly executam quatro casos sintéticos isolados antes do início do
+título. Cada caso parte do mesmo estado, roda uma vez no interpretador e uma vez
+no JIT AArch64 e compara o estado arquitetural resultante. A cobertura inicial
+inclui:
+
+- operações inteiras, Condition Register e rotação;
+- branch condicional;
+- load/store com validação de endianness;
+- ponto flutuante e Paired Singles.
+
+O código sintético usa uma pequena alocação temporária no code cave, nunca é
+publicado na tabela de saltos do jogo e é liberado antes de o título começar. Os
+contadores do autoteste são zerados em seguida para não contaminar a telemetria
+da sessão. A linha `JIT ARM64 differential` no log informa `PASS`, `FAIL` ou
+`SKIP`. O recurso permanece desligado em builds stable/release.
+
+O caminho de referência do interpretador é executado com o recompilador
+temporariamente suspenso. Isso impede que o `blr` usado para encerrar cada caso
+marque o endereço de escape `0x00000000` para compilação assíncrona. Essa
+isolação é obrigatória: o autoteste não pode alterar a fila nem os metadados do
+JIT usados pelo título real.
+
 ## Critério para o próximo incremento
 
-Executar sessões Android prolongadas, comparar cold/warm cache e confirmar se
-`retainedInvalidatedAllocationBytes` estabiliza. Nenhuma otimização do emissor,
-alocador de registradores ou linking de blocos será aprovada apenas por FPS
-médio. Os testes diferenciais intérprete/JIT deverão comparar registradores,
-memória, exceções e ponto flutuante antes de mudanças semânticas.
+Ampliar gradualmente os casos diferenciais para atomics, exceções, alinhamento,
+barreiras e resultados de ponto flutuante especiais. Nenhuma otimização do
+emissor, alocador de registradores ou linking de blocos será aprovada apenas por
+FPS médio.
