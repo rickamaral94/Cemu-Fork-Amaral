@@ -20,6 +20,8 @@
 #endif
 #include "util/highresolutiontimer/HighResolutionTimer.h"
 
+#include <algorithm>
+
 #define PPCREC_FORCE_SYNCHRONOUS_COMPILATION	0 // if 1, then function recompilation will block and execute on the thread that called PPCRecompiler_visitAddressNoBlock
 #define PPCREC_LOG_RECOMPILATION_RESULTS		0
 
@@ -737,6 +739,34 @@ void PPCRecompiler_invalidateRange(uint32 startAddr, uint32 endAddr)
 
 	s_ppcRecompilerState.recompilerSpinlock.unlock();
 }
+
+#if defined(CEMU_ENABLE_JIT_DIFFERENTIAL_TESTS) && defined(__aarch64__)
+bool PPCRecompiler_CleanupPublishedAArch64TestFunction(PPCRecFunction_t* func)
+{
+	// Nightly startup tests run before the worker and emulated CPU threads are
+	// started. The function must already have been invalidated and removed from
+	// functionStorage before its native allocation can be reclaimed here.
+	cemu_assert_debug(!s_ppcRecompilerState.workerThread.joinable());
+	if (s_ppcRecompilerState.workerThread.joinable())
+		return false;
+	s_ppcRecompilerState.recompilerSpinlock.lock();
+	s_ppcRecompilerState.invalidationRanges.clear();
+	auto& publishedFunctions = s_ppcRecompilerState.publishedAArch64Functions;
+	auto funcIt = std::find(publishedFunctions.begin(), publishedFunctions.end(), func);
+	cemu_assert_debug(funcIt != publishedFunctions.end());
+	if (funcIt == publishedFunctions.end())
+	{
+		s_ppcRecompilerState.recompilerSpinlock.unlock();
+		return false;
+	}
+	publishedFunctions.erase(funcIt);
+	s_ppcRecompilerState.recompilerSpinlock.unlock();
+
+	PPCRecompiler_cleanupAArch64Code(func->x86Code, func->x86Size);
+	delete func;
+	return true;
+}
+#endif
 
 #if defined(ARCH_X86_64)
 void PPCRecompiler_initPlatform()

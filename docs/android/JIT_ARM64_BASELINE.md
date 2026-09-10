@@ -94,6 +94,14 @@ contadores do autoteste são zerados em seguida para não contaminar a telemetri
 da sessão. A linha `JIT ARM64 differential` no log informa `PASS`, `FAIL` ou
 `SKIP`. O recurso permanece desligado em builds stable/release.
 
+A nightly também publica um bloco sintético simples na jump table, executa o
+bloco e invalida toda a faixa PowerPC correspondente antes de iniciar as
+threads do jogo. A linha `JIT ARM64 invalidation` confirma separadamente que o
+bloco executou, que o ponto de entrada voltou ao fallback não visitado e que uma
+tentativa sem recompilação não reutilizou o ponteiro nativo obsoleto. O código
+de teste é reclamado ainda nesse ponto quiescente e seus contadores são zerados
+antes do título real.
+
 O caminho de referência do interpretador é executado com o recompilador
 temporariamente suspenso. Isso impede que o `blr` usado para encerrar cada caso
 marque o endereço de escape `0x00000000` para compilação assíncrona. Essa
@@ -137,8 +145,8 @@ test.
 
 ## Critério para o próximo incremento
 
-Validar a reclamação no encerramento em ciclos repetidos de abrir/sair do título
-e ampliar gradualmente os casos diferenciais para invalidação funcional,
-exceções recuperáveis, concorrência e resultados de ponto flutuante especiais. Nenhuma otimização do
-emissor, alocador de registradores ou linking de blocos será aprovada apenas por
-FPS médio.
+Validar em dispositivo a publicação e invalidação funcional do bloco sintético
+e ampliar gradualmente os casos diferenciais para recompilação após alteração,
+exceções recuperáveis, concorrência e resultados de ponto flutuante especiais.
+Nenhuma otimização do emissor, alocador de registradores ou linking de blocos
+será aprovada apenas por FPS médio.

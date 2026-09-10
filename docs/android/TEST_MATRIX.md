@@ -93,6 +93,13 @@ bits em RAM normal. Ele não testa atomics desalinhados nem comprova recuperaç�
 de exceções de memória; provocar uma falha de host antes dessa infraestrutura
 poderia encerrar o APK em vez de produzir um resultado diagnóstico controlado.
 
+Na build de invalidação funcional, o log deve manter o resumo diferencial em
+`passed=8 failed=0 total=8` e também registrar `JIT ARM64 invalidation:
+result=PASS executed=true unlinked=true staleEntryBlocked=true reclaimed=true`.
+O caso publica e executa um bloco antes de removê-lo da jump table. Ele ainda
+não recompila uma segunda versão do bloco e não simula concorrência entre
+núcleos.
+
 Para validar a reclamação do code cache no ponto de quiescência, inicie um
 título, jogue por pelo menos dez minutos e use **Sair** no menu do emulador. A
 ação encerra o processo Android depois do shutdown nativo. Reabra o aplicativo,

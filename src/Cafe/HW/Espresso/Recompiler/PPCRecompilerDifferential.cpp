@@ -10,6 +10,9 @@
 PPCRecFunction_t* PPCRecompiler_recompileFunction(PPCFunctionBoundaryTracker::PPCRange_t range,
 	std::set<uint32>& entryAddresses, std::vector<std::pair<MPTR, uint32>>& entryPointsOut,
 	PPCFunctionBoundaryTracker& boundaryTracker, bool applyConfiguredRange);
+bool PPCRecompiler_makeRecompiledFunctionActive(uint32 initialEntryPoint,
+	PPCFunctionBoundaryTracker::PPCRange_t& range, PPCRecFunction_t* ppcRecFunc,
+	std::vector<std::pair<MPTR, uint32>>& entryPoints);
 
 namespace
 {
@@ -118,6 +121,11 @@ constexpr std::array<uint32, 8> kUnalignedLoadStoreCode{
 	EncodeD(44, 5, 3, 14),              // sth r5, 14(r3)
 	EncodeD(50, 1, 3, 17),              // lfd f1, 17(r3)
 	EncodeD(54, 1, 3, 27),              // stfd f1, 27(r3)
+	kReturnToInterpreter,
+};
+
+constexpr std::array<uint32, 2> kInvalidationCode{
+	EncodeD(14, 3, 0, 0x1234),          // li r3, 0x1234
 	kReturnToInterpreter,
 };
 
@@ -493,6 +501,111 @@ bool RunCase(const DifferentialCase& testCase, MPTR codeAddress, MPTR dataAddres
 	delete function;
 	return passed;
 }
+
+bool RunPublishedInvalidationCase(MPTR codeAddress)
+{
+	for (size_t i = 0; i < kInvalidationCode.size(); ++i)
+		memory_writeU32(codeAddress + static_cast<MPTR>(i * sizeof(uint32)), kInvalidationCode[i]);
+
+	PPCFunctionBoundaryTracker boundaryTracker;
+	boundaryTracker.trackStartPoint(codeAddress);
+	PPCFunctionBoundaryTracker::PPCRange_t range;
+	if (!boundaryTracker.getRangeForAddress(codeAddress, range))
+	{
+		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=range");
+		return false;
+	}
+
+	std::set<uint32> entryAddresses{codeAddress};
+	std::vector<std::pair<MPTR, uint32>> entryPoints;
+	PPCRecFunction_t* function = PPCRecompiler_recompileFunction(
+		range, entryAddresses, entryPoints, boundaryTracker, false);
+	if (!function)
+	{
+		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=compile");
+		return false;
+	}
+
+	void* hostEntryPoint = nullptr;
+	for (const auto& [ppcAddress, hostOffset] : entryPoints)
+	{
+		if (ppcAddress == codeAddress)
+		{
+			hostEntryPoint = static_cast<uint8*>(function->x86Code) + hostOffset;
+			break;
+		}
+	}
+	if (!hostEntryPoint)
+	{
+		PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
+		delete function;
+		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=entrypoint");
+		return false;
+	}
+
+	auto& jumpEntry = ppcRecompilerInstanceData->ppcRecompilerDirectJumpTable[codeAddress / 4];
+	if (jumpEntry != PPCRecompiler_leaveRecompilerCode_unvisited)
+	{
+		PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
+		delete function;
+		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=jump-table-not-clean");
+		return false;
+	}
+
+	jumpEntry = PPCRecompiler_leaveRecompilerCode_visited;
+	const bool published = PPCRecompiler_makeRecompiledFunctionActive(
+		codeAddress, range, function, entryPoints);
+	if (!published)
+	{
+		jumpEntry = PPCRecompiler_leaveRecompilerCode_unvisited;
+		PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
+		delete function;
+		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=publish");
+		return false;
+	}
+
+	PPCInterpreterGlobal_t globalState{};
+	PPCInterpreter_t executedState{};
+	executedState.instructionPointer = codeAddress;
+	executedState.spr.LR = 0;
+	executedState.remainingCycles = 1000000;
+	executedState.LSQE = 1;
+	executedState.PSE = 1;
+	executedState.global = &globalState;
+	const bool executed = ExecuteJit(executedState, hostEntryPoint) &&
+		executedState.gpr[3] == 0x1234;
+
+	PPCRecompiler_invalidateRange(
+		codeAddress, codeAddress + static_cast<uint32>(kInvalidationCode.size() * sizeof(uint32)));
+	const bool unlinked = jumpEntry == PPCRecompiler_leaveRecompilerCode_unvisited;
+
+	PPCInterpreter_t staleEntryState{};
+	staleEntryState.instructionPointer = codeAddress;
+	staleEntryState.spr.LR = 0;
+	staleEntryState.remainingCycles = 1000000;
+	staleEntryState.gpr[3] = 0xA5A5A5A5;
+	staleEntryState.LSQE = 1;
+	staleEntryState.PSE = 1;
+	staleEntryState.global = &globalState;
+	PPCRecompiler_attemptEnterWithoutRecompile(&staleEntryState, codeAddress);
+	const bool staleEntryBlocked = staleEntryState.instructionPointer == codeAddress &&
+		staleEntryState.gpr[3] == 0xA5A5A5A5;
+
+	const bool reclaimed = PPCRecompiler_CleanupPublishedAArch64TestFunction(function);
+	const bool passed = executed && unlinked && staleEntryBlocked && reclaimed;
+	if (passed)
+	{
+		cemuLog_log(LogType::Force,
+			"JIT ARM64 invalidation: result=PASS executed=true unlinked=true staleEntryBlocked=true reclaimed=true");
+	}
+	else
+	{
+		cemuLog_log(LogType::Force,
+			"JIT ARM64 invalidation: result=FAIL executed={} unlinked={} staleEntryBlocked={} reclaimed={}",
+			executed, unlinked, staleEntryBlocked, reclaimed);
+	}
+	return passed;
+}
 }
 
 void PPCRecompiler_RunAArch64DifferentialTests()
@@ -523,6 +636,7 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 		if (RunCase(testCase, codeAddress, dataAddress))
 			passedCount++;
 	}
+	RunPublishedInvalidationCase(codeAddress);
 	RPLLoader_ReleaseCodeCaveMem(allocation);
 
 	cemuLog_log(LogType::Force, "JIT ARM64 differential: result={} passed={} failed={} total={}",
