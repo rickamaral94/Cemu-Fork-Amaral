@@ -175,6 +175,9 @@ void PPCRecompiler_LogStats();
 
 #ifdef CEMU_ENABLE_JIT_DIFFERENTIAL_TESTS
 void PPCRecompiler_RunAArch64DifferentialTests();
+#if defined(__aarch64__)
+bool PPCRecompiler_CleanupPublishedAArch64TestFunction(PPCRecFunction_t* func);
+#endif
 #endif
 
 void PPCRecompiler_Enable();
