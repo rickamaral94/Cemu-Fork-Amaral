@@ -69,7 +69,7 @@ há instrumentação adicionada ao caminho que executa cada bloco recompilado.
 
 ## Testes diferenciais da nightly
 
-Builds nightly executam oito casos sintéticos isolados antes do início do
+Builds nightly executam nove casos sintéticos isolados antes do início do
 título. Cada caso parte do mesmo estado, roda uma vez no interpretador e uma vez
 no JIT AArch64 e compara o estado arquitetural resultante. A cobertura inicial
 inclui:
@@ -78,6 +78,8 @@ inclui:
 - branch condicional;
 - load/store com validação de endianness;
 - ponto flutuante e Paired Singles;
+- preservação bit a bit de valores especiais nos quatro `ps_merge`, incluindo
+  destino sobreposto a uma das fontes;
 - reserva atômica `lwarx`/`stwcx.` com sucesso;
 - falha de `stwcx.` quando o valor reservado foi alterado;
 - smoke test de tradução para `eieio`, `sync` e `isync`.
@@ -170,6 +172,18 @@ não invalidaram funções durante essas sessões (`invalidatedFunctions=0`), en
 a validação não comprova invalidação concorrente causada pelo jogo nem limita o
 crescimento do code cache em uma sessão longa.
 
+## Valores especiais de Paired Singles
+
+O caso `paired-single-special-values` amplia o diferencial sem depender de
+arredondamento ou de regras de propagação de NaN do host. Os quatro `ps_merge`
+movem combinações de `+0`, `-0`, infinito, NaN silencioso com payload e
+subnormal, e o resultado é comparado bit a bit entre interpretador e JIT.
+
+`ps_merge10 f2, f1, f2` mantém o destino sobreposto ao segundo operando. Esse
+formato exercita explicitamente o temporário necessário para que o backend não
+sobrescreva `f2.ps0` antes de copiá-lo para `f2.ps1`. O autoteste continua
+isolado em nightly e não altera o estado do título real.
+
 O caminho de referência do interpretador é executado com o recompilador
 temporariamente suspenso. Isso impede que o `blr` usado para encerrar cada caso
 marque o endereço de escape `0x00000000` para compilação assíncrona. Essa
@@ -213,9 +227,9 @@ test.
 
 ## Critério para o próximo incremento
 
-O retry e a execução da segunda versão foram validados em dispositivo. O próximo
-incremento deve ampliar os testes diferenciais de ponto flutuante e Paired
-Singles com valores especiais, preservando comparação bit a bit quando a
-semântica permitir. Casos posteriores ainda devem cobrir exceções recuperáveis
-e concorrência. Nenhuma otimização do emissor, alocador de registradores ou
-linking de blocos será aprovada apenas por FPS médio.
+Validar em dispositivo que o diferencial passa com `passed=9 failed=0 total=9`
+e que o caso `paired-single-special-values` não altera inicialização,
+estabilidade ou desempenho observado dos títulos. Casos posteriores ainda devem
+cobrir aritmética de ponto flutuante com arredondamento, exceções recuperáveis e
+concorrência. Nenhuma otimização do emissor, alocador de registradores ou linking
+de blocos será aprovada apenas por FPS médio.
