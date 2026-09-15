@@ -43,6 +43,8 @@ namespace NativeEmulation
 		{
 			const jint status = static_cast<jint>(
 				CafeSystem::GetForegroundTitleReturnStatus().value_or(-1));
+			cemuLog_log(LogType::Force,
+				"Android: forwarding PPC process exit status={} to activity", status);
 			JNIUtils::FiberSafeJNICall([this, status](JNIEnv* env) {
 				env->CallStaticVoidMethod(
 					*m_nativeEmulationClass, m_onPPCProcessExitMethod, status);
