@@ -73,6 +73,7 @@ private class InputDelegateManager(context: Context) {
 class EmulationActivity : AppCompatActivity() {
     private lateinit var inputManager: InputDelegateManager
     private var processInputEvents = true
+    private var isQuitting = false
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
         if (processInputEvents && InputHandler.onMotionEvent(event)) {
@@ -141,6 +142,16 @@ class EmulationActivity : AppCompatActivity() {
                 }
             }
         }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                NativeEmulation.ppcProcessExitStatus.collect { status ->
+                    if (status != null) {
+                        onQuit()
+                    }
+                }
+            }
+        }
     }
 
     override fun onPause() {
@@ -174,6 +185,11 @@ class EmulationActivity : AppCompatActivity() {
     }
 
     private fun onQuit() {
+        if (isQuitting) {
+            return
+        }
+        isQuitting = true
+
         NativeLogging.logRecompilerStats()
         NativeEmulation.shutdownEmulation()
         NativeLogging.waitForFlush()
