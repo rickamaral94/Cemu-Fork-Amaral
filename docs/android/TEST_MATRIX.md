@@ -62,6 +62,14 @@ notificação pode iniciar o encerramento. Um `OSPanic` do título continua send
 registrado como falha do título; o frontend não deve acrescentar um segundo
 crash durante a limpeza.
 
+Esse gate foi aprovado no AYN Odin2 Portal com a build `e6b1e26-nightly` e
+Xenoblade Chronicles X v16 (`00050000101c4d00`). Após o mesmo `OSPanic`, o
+log registrou o encaminhamento de `status=1`, não registrou `SIGSEGV` e foi
+preservado como `previous-game-session`. O shutdown reclamou 14.744 funções e
+87.945.216 bytes. Uma tradução atingida pela invalidação concorrente foi
+rejeitada antes da publicação e seus 4.096 bytes foram descartados com
+segurança; não houve falha do backend.
+
 O ZIP contém um `report.json` versionado com dados do app, aparelho, tela,
 driver selecionado e configurações gráficas não sensíveis. Quando disponível,
 inclui até 4 MiB do log mais relevante: sessão atual com jogo, sessão anterior
