@@ -132,6 +132,15 @@ segundo operando, exercitando o caminho temporário do backend ARM64. Essa
 validação não cobre ainda modos de arredondamento, exceções de FP ou propagação
 aritmética de NaN.
 
+O gate foi aprovado no AYN Odin2 Portal com a build `d8b93c2-nightly` durante
+uma sessão de aproximadamente 4 minutos e 8 segundos de Xenoblade Chronicles X.
+O diferencial passou `9/9`, a invalidação permaneceu integralmente `PASS` e
+15.108 funções, totalizando 108.257.280 bytes, foram reclamadas. O título chamou
+`coreinit.exit(1)` após `OSPanic` e o frontend Android sofreu `SIGSEGV` no
+shutdown por ausência de `SystemImplementation`; esse defeito de ciclo de vida
+é registrado separadamente e não invalida o resultado determinístico do
+autoteste FP.
+
 Para validar a reclamação do code cache no ponto de quiescência, inicie um
 título, jogue por pelo menos dez minutos e use **Sair** no menu do emulador. A
 ação encerra o processo Android depois do shutdown nativo. Reabra o aplicativo,
