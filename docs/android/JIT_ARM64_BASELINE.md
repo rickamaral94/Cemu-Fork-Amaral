@@ -94,6 +94,31 @@ contadores do autoteste são zerados em seguida para não contaminar a telemetri
 da sessão. A linha `JIT ARM64 differential` no log informa `PASS`, `FAIL` ou
 `SKIP`. O recurso permanece desligado em builds stable/release.
 
+A nightly também publica um bloco sintético simples na jump table, executa o
+bloco e invalida toda a faixa PowerPC correspondente antes de iniciar as
+threads do jogo. A linha `JIT ARM64 invalidation` confirma separadamente que o
+bloco executou, que o ponto de entrada voltou ao fallback não visitado e que uma
+tentativa sem recompilação não reutilizou o ponteiro nativo obsoleto. O código
+de teste é reclamado ainda nesse ponto quiescente e seus contadores são zerados
+antes do título real.
+
+## Validação física da invalidação publicada
+
+A build `54c32fe-nightly`, gerada para o PR #10 com head
+`406850a33865a90d3c4d2fbc88112bc94f6293b0`, foi validada em um AYN Odin2
+Portal com Android 13, Snapdragon 8 Gen 2 e Adreno 740. Uma sessão real de
+aproximadamente 13 minutos e 36 segundos registrou:
+
+- `JIT ARM64 invalidation: result=PASS executed=true unlinked=true staleEntryBlocked=true reclaimed=true`;
+- `JIT ARM64 differential: result=PASS passed=8 failed=0 total=8`;
+- 13.521 funções geradas e publicadas, sem falha de backend ou publicação;
+- 13.521 funções e 65.282.048 bytes reclamados no encerramento.
+
+O log veio da sessão anterior de jogo, sem truncamento, após encerramento pelo
+fluxo normal do aplicativo. Essa evidência aprova o caso funcional isolado e a
+limpeza no ponto quiescente. Ela não comprova recompilação de uma segunda versão
+do bloco, invalidação concorrente nem ausência de crescimento em sessões longas.
+
 O caminho de referência do interpretador é executado com o recompilador
 temporariamente suspenso. Isso impede que o `blr` usado para encerrar cada caso
 marque o endereço de escape `0x00000000` para compilação assíncrona. Essa
@@ -137,8 +162,9 @@ test.
 
 ## Critério para o próximo incremento
 
-Validar a reclamação no encerramento em ciclos repetidos de abrir/sair do título
-e ampliar gradualmente os casos diferenciais para invalidação funcional,
-exceções recuperáveis, concorrência e resultados de ponto flutuante especiais. Nenhuma otimização do
-emissor, alocador de registradores ou linking de blocos será aprovada apenas por
-FPS médio.
+A publicação e a invalidação funcional do bloco sintético foram validadas no
+dispositivo. O próximo incremento deve recompilar o mesmo endereço após alterar
+suas instruções PowerPC e comprovar que somente a nova versão é executada. Casos
+posteriores ainda devem cobrir exceções recuperáveis, concorrência e resultados
+de ponto flutuante especiais. Nenhuma otimização do emissor, alocador de
+registradores ou linking de blocos será aprovada apenas por FPS médio.
