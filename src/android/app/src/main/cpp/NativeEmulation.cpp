@@ -24,6 +24,37 @@ void CemuCommonInit();
 
 namespace NativeEmulation
 {
+	class AndroidSystemImplementation final : public CafeSystem::SystemImplementation
+	{
+	  public:
+		AndroidSystemImplementation()
+			: m_nativeEmulationClass("info/cemu/cemu/nativeinterface/NativeEmulation")
+		{
+			m_onPPCProcessExitMethod = JNIUtils::GetEnv()->GetStaticMethodID(
+				*m_nativeEmulationClass, "onPPCProcessExit", "(I)V");
+		}
+
+		void CafeRecreateCanvas() override
+		{
+			cemuLog_log(LogType::Force, "Android: in-title canvas recreation is not implemented");
+		}
+
+		void CafePPCProcessExit() override
+		{
+			const jint status = static_cast<jint>(
+				CafeSystem::GetForegroundTitleReturnStatus().value_or(-1));
+			JNIUtils::FiberSafeJNICall([this, status](JNIEnv* env) {
+				env->CallStaticVoidMethod(
+					*m_nativeEmulationClass, m_onPPCProcessExitMethod, status);
+			});
+		}
+
+	  private:
+		JNIUtils::Scopedjclass m_nativeEmulationClass;
+		jmethodID m_onPPCProcessExitMethod{};
+	};
+
+	std::unique_ptr<AndroidSystemImplementation> s_systemImplementation;
 
 	void CreateAudioDevice(IAudioAPI::AudioAPI audioApi, AudioChannels channels, sint32 volume, bool isTV)
 	{
@@ -235,6 +266,12 @@ Java_info_cemu_cemu_nativeinterface_NativeEmulation_initializeEmulation([[maybe_
 	ActiveSettings::Init();
 	LatteOverlay_init();
 	CemuCommonInit();
+	if (!NativeEmulation::s_systemImplementation)
+	{
+		NativeEmulation::s_systemImplementation =
+			std::make_unique<NativeEmulation::AndroidSystemImplementation>();
+		CafeSystem::SetImplementation(NativeEmulation::s_systemImplementation.get());
+	}
 }
 
 extern "C" [[maybe_unused]] JNIEXPORT void JNICALL
