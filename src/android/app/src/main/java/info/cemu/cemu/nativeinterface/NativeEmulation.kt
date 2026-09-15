@@ -1,8 +1,21 @@
 package info.cemu.cemu.nativeinterface
 
 import android.view.Surface
+import androidx.annotation.Keep
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 object NativeEmulation {
+    private val _ppcProcessExitStatus = MutableStateFlow<Int?>(null)
+    val ppcProcessExitStatus = _ppcProcessExitStatus.asStateFlow()
+
+    @Keep
+    @JvmStatic
+    @Suppress("unused")
+    private fun onPPCProcessExit(status: Int) {
+        _ppcProcessExitStatus.value = status
+    }
+
     @JvmStatic
     external fun initializeEmulation()
 
