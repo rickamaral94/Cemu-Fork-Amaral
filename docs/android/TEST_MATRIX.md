@@ -53,6 +53,15 @@ desbloqueio de tela. Aprovado significa: áudio e jogo não avançam em segundo
 plano, a imagem retorna sem tela preta, controles respondem, o áudio não duplica
 e o save continua carregável.
 
+Para validar saída iniciada pelo próprio título, reproduza um caminho que chame
+`coreinit.exit()`. O log deve registrar
+`Android: forwarding PPC process exit status=<n> to activity`, concluir o
+shutdown nativo e retornar/encerrar a atividade sem `SIGSEGV` em
+`coreinit::OSShutdownThread`. A ação é reentrante: somente a primeira
+notificação pode iniciar o encerramento. Um `OSPanic` do título continua sendo
+registrado como falha do título; o frontend não deve acrescentar um segundo
+crash durante a limpeza.
+
 O ZIP contém um `report.json` versionado com dados do app, aparelho, tela,
 driver selecionado e configurações gráficas não sensíveis. Quando disponível,
 inclui até 4 MiB do log mais relevante: sessão atual com jogo, sessão anterior
