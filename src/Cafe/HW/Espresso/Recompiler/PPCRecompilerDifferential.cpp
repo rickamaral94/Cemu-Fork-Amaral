@@ -124,8 +124,13 @@ constexpr std::array<uint32, 8> kUnalignedLoadStoreCode{
 	kReturnToInterpreter,
 };
 
-constexpr std::array<uint32, 2> kInvalidationCode{
+constexpr std::array<uint32, 2> kInvalidationCodeV1{
 	EncodeD(14, 3, 0, 0x1234),          // li r3, 0x1234
+	kReturnToInterpreter,
+};
+
+constexpr std::array<uint32, 2> kInvalidationCodeV2{
+	EncodeD(14, 3, 0, 0x5678),          // li r3, 0x5678
 	kReturnToInterpreter,
 };
 
@@ -409,7 +414,9 @@ bool ExecuteJit(PPCInterpreter_t& state, void* entryPoint)
 	return state.instructionPointer == 0;
 }
 
-PPCRecFunction_t* CompileTestFunction(MPTR codeAddress, void*& entryPoint)
+PPCRecFunction_t* CompileTestFunction(MPTR codeAddress, void*& entryPoint,
+	PPCFunctionBoundaryTracker::PPCRange_t* rangeOut = nullptr,
+	std::vector<std::pair<MPTR, uint32>>* entryPointsOut = nullptr)
 {
 	PPCFunctionBoundaryTracker boundaryTracker;
 	boundaryTracker.trackStartPoint(codeAddress);
@@ -428,6 +435,10 @@ PPCRecFunction_t* CompileTestFunction(MPTR codeAddress, void*& entryPoint)
 		if (ppcAddress == codeAddress)
 		{
 			entryPoint = static_cast<uint8*>(function->x86Code) + hostOffset;
+			if (rangeOut)
+				*rangeOut = range;
+			if (entryPointsOut)
+				*entryPointsOut = std::move(entryPoints);
 			return function;
 		}
 	}
@@ -504,62 +515,37 @@ bool RunCase(const DifferentialCase& testCase, MPTR codeAddress, MPTR dataAddres
 
 bool RunPublishedInvalidationCase(MPTR codeAddress)
 {
-	for (size_t i = 0; i < kInvalidationCode.size(); ++i)
-		memory_writeU32(codeAddress + static_cast<MPTR>(i * sizeof(uint32)), kInvalidationCode[i]);
+	for (size_t i = 0; i < kInvalidationCodeV1.size(); ++i)
+		memory_writeU32(codeAddress + static_cast<MPTR>(i * sizeof(uint32)), kInvalidationCodeV1[i]);
 
-	PPCFunctionBoundaryTracker boundaryTracker;
-	boundaryTracker.trackStartPoint(codeAddress);
-	PPCFunctionBoundaryTracker::PPCRange_t range;
-	if (!boundaryTracker.getRangeForAddress(codeAddress, range))
-	{
-		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=range");
-		return false;
-	}
-
-	std::set<uint32> entryAddresses{codeAddress};
-	std::vector<std::pair<MPTR, uint32>> entryPoints;
-	PPCRecFunction_t* function = PPCRecompiler_recompileFunction(
-		range, entryAddresses, entryPoints, boundaryTracker, false);
-	if (!function)
+	PPCFunctionBoundaryTracker::PPCRange_t initialRange;
+	std::vector<std::pair<MPTR, uint32>> initialEntryPoints;
+	void* initialHostEntryPoint = nullptr;
+	PPCRecFunction_t* initialFunction = CompileTestFunction(
+		codeAddress, initialHostEntryPoint, &initialRange, &initialEntryPoints);
+	if (!initialFunction)
 	{
 		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=compile");
-		return false;
-	}
-
-	void* hostEntryPoint = nullptr;
-	for (const auto& [ppcAddress, hostOffset] : entryPoints)
-	{
-		if (ppcAddress == codeAddress)
-		{
-			hostEntryPoint = static_cast<uint8*>(function->x86Code) + hostOffset;
-			break;
-		}
-	}
-	if (!hostEntryPoint)
-	{
-		PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
-		delete function;
-		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=entrypoint");
 		return false;
 	}
 
 	auto& jumpEntry = ppcRecompilerInstanceData->ppcRecompilerDirectJumpTable[codeAddress / 4];
 	if (jumpEntry != PPCRecompiler_leaveRecompilerCode_unvisited)
 	{
-		PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
-		delete function;
+		PPCRecompiler_cleanupAArch64Code(initialFunction->x86Code, initialFunction->x86Size);
+		delete initialFunction;
 		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=jump-table-not-clean");
 		return false;
 	}
 
 	jumpEntry = PPCRecompiler_leaveRecompilerCode_visited;
-	const bool published = PPCRecompiler_makeRecompiledFunctionActive(
-		codeAddress, range, function, entryPoints);
-	if (!published)
+	const bool initialPublished = PPCRecompiler_makeRecompiledFunctionActive(
+		codeAddress, initialRange, initialFunction, initialEntryPoints);
+	if (!initialPublished)
 	{
 		jumpEntry = PPCRecompiler_leaveRecompilerCode_unvisited;
-		PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
-		delete function;
+		PPCRecompiler_cleanupAArch64Code(initialFunction->x86Code, initialFunction->x86Size);
+		delete initialFunction;
 		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=publish");
 		return false;
 	}
@@ -572,11 +558,13 @@ bool RunPublishedInvalidationCase(MPTR codeAddress)
 	executedState.LSQE = 1;
 	executedState.PSE = 1;
 	executedState.global = &globalState;
-	const bool executed = ExecuteJit(executedState, hostEntryPoint) &&
+	const bool executed = ExecuteJit(executedState, initialHostEntryPoint) &&
 		executedState.gpr[3] == 0x1234;
 
+	for (size_t i = 0; i < kInvalidationCodeV2.size(); ++i)
+		memory_writeU32(codeAddress + static_cast<MPTR>(i * sizeof(uint32)), kInvalidationCodeV2[i]);
 	PPCRecompiler_invalidateRange(
-		codeAddress, codeAddress + static_cast<uint32>(kInvalidationCode.size() * sizeof(uint32)));
+		codeAddress, codeAddress + static_cast<uint32>(kInvalidationCodeV1.size() * sizeof(uint32)));
 	const bool unlinked = jumpEntry == PPCRecompiler_leaveRecompilerCode_unvisited;
 
 	PPCInterpreter_t staleEntryState{};
@@ -591,18 +579,104 @@ bool RunPublishedInvalidationCase(MPTR codeAddress)
 	const bool staleEntryBlocked = staleEntryState.instructionPointer == codeAddress &&
 		staleEntryState.gpr[3] == 0xA5A5A5A5;
 
-	const bool reclaimed = PPCRecompiler_CleanupPublishedAArch64TestFunction(function);
-	const bool passed = executed && unlinked && staleEntryBlocked && reclaimed;
+	const bool initialReclaimed = PPCRecompiler_CleanupPublishedAArch64TestFunction(initialFunction);
+	if (!initialReclaimed)
+	{
+		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=initial-reclaim");
+		return false;
+	}
+
+	// Compile a replacement, then invalidate its range before publication to
+	// reproduce code changing while the compiler is active. Publication must be
+	// rejected and the entry must become eligible for a clean retry.
+	jumpEntry = PPCRecompiler_leaveRecompilerCode_visited;
+	PPCFunctionBoundaryTracker::PPCRange_t rejectedRange;
+	std::vector<std::pair<MPTR, uint32>> rejectedEntryPoints;
+	void* rejectedHostEntryPoint = nullptr;
+	PPCRecFunction_t* rejectedFunction = CompileTestFunction(
+		codeAddress, rejectedHostEntryPoint, &rejectedRange, &rejectedEntryPoints);
+	if (!rejectedFunction || !rejectedHostEntryPoint)
+	{
+		jumpEntry = PPCRecompiler_leaveRecompilerCode_unvisited;
+		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=replacement-compile");
+		return false;
+	}
+	PPCRecompiler_invalidateRange(
+		codeAddress, codeAddress + static_cast<uint32>(kInvalidationCodeV2.size() * sizeof(uint32)));
+	const bool rejectedPublished = PPCRecompiler_makeRecompiledFunctionActive(
+		codeAddress, rejectedRange, rejectedFunction, rejectedEntryPoints);
+	const bool retryUnblocked = !rejectedPublished &&
+		jumpEntry == PPCRecompiler_leaveRecompilerCode_unvisited;
+	if (rejectedPublished)
+	{
+		PPCRecompiler_invalidateRange(
+			codeAddress, codeAddress + static_cast<uint32>(kInvalidationCodeV2.size() * sizeof(uint32)));
+		PPCRecompiler_CleanupPublishedAArch64TestFunction(rejectedFunction);
+	}
+	else
+	{
+		PPCRecompiler_cleanupAArch64Code(rejectedFunction->x86Code, rejectedFunction->x86Size);
+		delete rejectedFunction;
+	}
+	if (!retryUnblocked)
+	{
+		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=retry-blocked");
+		return false;
+	}
+
+	jumpEntry = PPCRecompiler_leaveRecompilerCode_visited;
+	PPCFunctionBoundaryTracker::PPCRange_t replacementRange;
+	std::vector<std::pair<MPTR, uint32>> replacementEntryPoints;
+	void* replacementHostEntryPoint = nullptr;
+	PPCRecFunction_t* replacementFunction = CompileTestFunction(
+		codeAddress, replacementHostEntryPoint, &replacementRange, &replacementEntryPoints);
+	if (!replacementFunction || !replacementHostEntryPoint)
+	{
+		jumpEntry = PPCRecompiler_leaveRecompilerCode_unvisited;
+		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=retry-compile");
+		return false;
+	}
+	const bool replacementPublished = PPCRecompiler_makeRecompiledFunctionActive(
+		codeAddress, replacementRange, replacementFunction, replacementEntryPoints);
+	if (!replacementPublished)
+	{
+		jumpEntry = PPCRecompiler_leaveRecompilerCode_unvisited;
+		PPCRecompiler_cleanupAArch64Code(replacementFunction->x86Code, replacementFunction->x86Size);
+		delete replacementFunction;
+		cemuLog_log(LogType::Force, "JIT ARM64 invalidation: result=FAIL reason=retry-publish");
+		return false;
+	}
+
+	PPCInterpreter_t replacementState{};
+	replacementState.instructionPointer = codeAddress;
+	replacementState.spr.LR = 0;
+	replacementState.remainingCycles = 1000000;
+	replacementState.gpr[3] = 0xA5A5A5A5;
+	replacementState.LSQE = 1;
+	replacementState.PSE = 1;
+	replacementState.global = &globalState;
+	const bool replacementExecuted = ExecuteJit(replacementState, replacementHostEntryPoint) &&
+		replacementState.gpr[3] == 0x5678;
+	const bool oldResultBlocked = replacementState.gpr[3] != 0x1234;
+
+	PPCRecompiler_invalidateRange(
+		codeAddress, codeAddress + static_cast<uint32>(kInvalidationCodeV2.size() * sizeof(uint32)));
+	const bool replacementReclaimed =
+		PPCRecompiler_CleanupPublishedAArch64TestFunction(replacementFunction);
+	const bool reclaimed = initialReclaimed && replacementReclaimed;
+	const bool passed = executed && unlinked && staleEntryBlocked && retryUnblocked &&
+		replacementPublished && replacementExecuted && oldResultBlocked && reclaimed;
 	if (passed)
 	{
 		cemuLog_log(LogType::Force,
-			"JIT ARM64 invalidation: result=PASS executed=true unlinked=true staleEntryBlocked=true reclaimed=true");
+			"JIT ARM64 invalidation: result=PASS executed=true unlinked=true staleEntryBlocked=true retryUnblocked=true replacementExecuted=true oldResultBlocked=true reclaimed=true");
 	}
 	else
 	{
 		cemuLog_log(LogType::Force,
-			"JIT ARM64 invalidation: result=FAIL executed={} unlinked={} staleEntryBlocked={} reclaimed={}",
-			executed, unlinked, staleEntryBlocked, reclaimed);
+			"JIT ARM64 invalidation: result=FAIL executed={} unlinked={} staleEntryBlocked={} retryUnblocked={} replacementPublished={} replacementExecuted={} oldResultBlocked={} reclaimed={}",
+			executed, unlinked, staleEntryBlocked, retryUnblocked, replacementPublished,
+			replacementExecuted, oldResultBlocked, reclaimed);
 	}
 	return passed;
 }

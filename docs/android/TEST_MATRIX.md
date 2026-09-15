@@ -107,6 +107,13 @@ e publicação e reclamou as 13.521 funções no encerramento. O resultado valid
 este incremento isolado; a exigência geral de sessão prolongada permanece para
 investigar aquecimento, vazamentos e crescimento do code cache.
 
+Na build de recompilação após invalidação, a linha deve acrescentar
+`retryUnblocked=true replacementExecuted=true oldResultBlocked=true`. O teste
+altera o mesmo endereço PowerPC de `li r3, 0x1234` para `li r3, 0x5678`, rejeita
+uma publicação atingida por invalidação, confirma que o endereço volta para
+`unvisited` e publica uma tradução criada depois da invalidação. O resumo
+diferencial continua em `passed=8 failed=0 total=8`.
+
 Para validar a reclamação do code cache no ponto de quiescência, inicie um
 título, jogue por pelo menos dez minutos e use **Sair** no menu do emulador. A
 ação encerra o processo Android depois do shutdown nativo. Reabra o aplicativo,

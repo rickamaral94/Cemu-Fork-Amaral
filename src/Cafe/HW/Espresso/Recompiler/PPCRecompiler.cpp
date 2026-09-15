@@ -505,6 +505,12 @@ bool PPCRecompiler_makeRecompiledFunctionActive(uint32 initialEntryPoint, PPCFun
 	s_ppcRecompilerState.invalidationRanges.clear();
 	if (isInvalidated)
 	{
+		// The code changed while this function was being compiled. Leave the
+		// entry eligible for another visit; keeping it as `visited` would prevent
+		// the interpreter from queueing a fresh translation.
+		auto& initialEntry = ppcRecompilerInstanceData->ppcRecompilerDirectJumpTable[initialEntryPoint / 4];
+		if (initialEntry == PPCRecompiler_leaveRecompilerCode_visited)
+			initialEntry = PPCRecompiler_leaveRecompilerCode_unvisited;
 		s_ppcRecompilerState.recompilerSpinlock.unlock();
 		return false;
 	}

@@ -119,6 +119,31 @@ fluxo normal do aplicativo. Essa evidência aprova o caso funcional isolado e a
 limpeza no ponto quiescente. Ela não comprova recompilação de uma segunda versão
 do bloco, invalidação concorrente nem ausência de crescimento em sessões longas.
 
+## Recompilação após invalidação
+
+O incremento seguinte corrige um bloqueio de progresso encontrado no caminho de
+publicação. Quando uma faixa era invalidada durante a compilação, a função nova
+era rejeitada corretamente, mas o ponto de entrada podia permanecer marcado
+como `visited`. O interpretador não agenda um endereço nesse estado novamente,
+portanto a tradução atualizada poderia deixar de ser produzida.
+
+Ao rejeitar uma publicação atingida por invalidação, o JIT agora devolve o ponto
+de entrada para `unvisited` sob o mesmo lock. A nightly amplia o teste publicado
+para escrever e executar uma primeira versão, substituir as instruções PowerPC,
+invalidar o bloco, simular outra invalidação entre compilação e publicação e
+confirmar que:
+
+- a tradução produzida antes da última invalidação não é publicada;
+- uma nova visita pode solicitar outra compilação;
+- a segunda versão executa `li r3, 0x5678`, em vez do resultado antigo
+  `0x1234`;
+- as duas funções publicadas são removidas e reclamadas no ponto quiescente do
+  autoteste.
+
+O teste continua restrito à nightly e ocorre antes do worker e das CPUs
+emuladas. Ele cobre a transição funcional e a recuperação do retry, mas ainda
+não constitui um teste concorrente entre núcleos emulados.
+
 O caminho de referência do interpretador é executado com o recompilador
 temporariamente suspenso. Isso impede que o `blr` usado para encerrar cada caso
 marque o endereço de escape `0x00000000` para compilação assíncrona. Essa
@@ -162,9 +187,8 @@ test.
 
 ## Critério para o próximo incremento
 
-A publicação e a invalidação funcional do bloco sintético foram validadas no
-dispositivo. O próximo incremento deve recompilar o mesmo endereço após alterar
-suas instruções PowerPC e comprovar que somente a nova versão é executada. Casos
-posteriores ainda devem cobrir exceções recuperáveis, concorrência e resultados
-de ponto flutuante especiais. Nenhuma otimização do emissor, alocador de
-registradores ou linking de blocos será aprovada apenas por FPS médio.
+Validar em dispositivo que o retry fica desbloqueado e que a segunda versão do
+bloco é executada. Casos posteriores ainda devem cobrir exceções recuperáveis,
+concorrência e resultados de ponto flutuante especiais. Nenhuma otimização do
+emissor, alocador de registradores ou linking de blocos será aprovada apenas por
+FPS médio.
