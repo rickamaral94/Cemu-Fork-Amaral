@@ -107,6 +107,22 @@ e publicação e reclamou as 13.521 funções no encerramento. O resultado valid
 este incremento isolado; a exigência geral de sessão prolongada permanece para
 investigar aquecimento, vazamentos e crescimento do code cache.
 
+Na build de recompilação após invalidação, a linha deve acrescentar
+`retryUnblocked=true replacementExecuted=true oldResultBlocked=true`. O teste
+altera o mesmo endereço PowerPC de `li r3, 0x1234` para `li r3, 0x5678`, rejeita
+uma publicação atingida por invalidação, confirma que o endereço volta para
+`unvisited` e publica uma tradução criada depois da invalidação. O resumo
+diferencial continua em `passed=8 failed=0 total=8`.
+
+Esse gate foi aprovado no AYN Odin2 Portal com a build `270f183-nightly` em
+The Legend of Zelda: The Wind Waker HD e Tekken Tag Tournament 2. Os dois logs
+registraram todos os campos do gate como `true`, diferencial `8/8`, zero falhas
+de backend/publicação e limpeza integral no encerramento: 11.071 funções e
+54.026.240 bytes no primeiro título; 19.302 funções e 193.650.688 bytes no
+segundo. As sessões não registraram invalidações originadas pelos títulos
+(`invalidatedFunctions=0`); o teste concorrente e a sessão prolongada continuam
+pendentes.
+
 Para validar a reclamação do code cache no ponto de quiescência, inicie um
 título, jogue por pelo menos dez minutos e use **Sair** no menu do emulador. A
 ação encerra o processo Android depois do shutdown nativo. Reabra o aplicativo,
