@@ -144,6 +144,32 @@ O teste continua restrito à nightly e ocorre antes do worker e das CPUs
 emuladas. Ele cobre a transição funcional e a recuperação do retry, mas ainda
 não constitui um teste concorrente entre núcleos emulados.
 
+## Validação física da recompilação após invalidação
+
+A build `270f183-nightly`, produzida para o PR #11 com head
+`276d848bf00c22c55c335ccfc924d76f7e5745cd`, foi validada no AYN Odin2 Portal
+com Android 13, Snapdragon 8 Gen 2 e Adreno 740 em dois títulos distintos:
+
+| Título | Duração aproximada | Funções publicadas | Bytes reclamados | Falhas de tradução | Falhas de backend/publicação |
+|---|---:|---:|---:|---:|---:|
+| The Legend of Zelda: The Wind Waker HD (`0005000010143500`) | 9 min 33 s | 11.071 | 54.026.240 | 1 | 0 / 0 |
+| Tekken Tag Tournament 2 (`000500001010f800`) | 4 min 38 s | 19.302 | 193.650.688 | 15 | 0 / 0 |
+
+Nos dois pacotes o autoteste registrou integralmente:
+
+`JIT ARM64 invalidation: result=PASS executed=true unlinked=true staleEntryBlocked=true retryUnblocked=true replacementExecuted=true oldResultBlocked=true reclaimed=true`
+
+O diferencial também passou com `passed=8 failed=0 total=8`. O encerramento
+reclamou todas as 11.071 e 19.302 funções publicadas, respectivamente, sem crash
+registrado. As falhas de tradução são recusas do frontend com fallback e não
+falhas do backend AArch64; nenhuma publicação falhou.
+
+A evidência aprova a transição funcional, o desbloqueio do retry, a execução da
+tradução substituta e o bloqueio do resultado antigo no teste isolado. Os títulos
+não invalidaram funções durante essas sessões (`invalidatedFunctions=0`), então
+a validação não comprova invalidação concorrente causada pelo jogo nem limita o
+crescimento do code cache em uma sessão longa.
+
 O caminho de referência do interpretador é executado com o recompilador
 temporariamente suspenso. Isso impede que o `blr` usado para encerrar cada caso
 marque o endereço de escape `0x00000000` para compilação assíncrona. Essa
@@ -187,8 +213,9 @@ test.
 
 ## Critério para o próximo incremento
 
-Validar em dispositivo que o retry fica desbloqueado e que a segunda versão do
-bloco é executada. Casos posteriores ainda devem cobrir exceções recuperáveis,
-concorrência e resultados de ponto flutuante especiais. Nenhuma otimização do
-emissor, alocador de registradores ou linking de blocos será aprovada apenas por
-FPS médio.
+O retry e a execução da segunda versão foram validados em dispositivo. O próximo
+incremento deve ampliar os testes diferenciais de ponto flutuante e Paired
+Singles com valores especiais, preservando comparação bit a bit quando a
+semântica permitir. Casos posteriores ainda devem cobrir exceções recuperáveis
+e concorrência. Nenhuma otimização do emissor, alocador de registradores ou
+linking de blocos será aprovada apenas por FPS médio.
