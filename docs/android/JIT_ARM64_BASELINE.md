@@ -184,6 +184,26 @@ formato exercita explicitamente o temporário necessário para que o backend nã
 sobrescreva `f2.ps0` antes de copiá-lo para `f2.ps1`. O autoteste continua
 isolado em nightly e não altera o estado do título real.
 
+### Validação física
+
+A build `d8b93c2-nightly`, produzida no PR #12 com head
+`55bb7e6637c3c6b927aca543d8c59c73964f00ea`, foi executada no AYN Odin2
+Portal com Android 13, Snapdragon 8 Gen 2, Adreno 740 e Turnip Amaral
+26.3.0-devel v4.6.1.1. Xenoblade Chronicles X
+(`00050000101c4d00`) executou por aproximadamente 4 minutos e 8 segundos.
+
+O log registrou `case=paired-single-special-values result=PASS`, resumo
+`passed=9 failed=0 total=9` e o gate de invalidação integralmente `PASS`.
+No encerramento foram reclamadas 15.108 funções e 108.257.280 bytes.
+
+O título chamou `coreinit.exit(1)` após um `OSPanic` próprio e, depois da
+limpeza, o host Android sofreu `SIGSEGV` em `coreinit::OSShutdownThread`.
+A inspeção mostrou que `NotifyPPCProcessExit()` desreferencia
+`s_implementation`, que não é instalado no frontend Android. Esse defeito de
+encerramento é independente do autoteste FP e será corrigido em incremento
+isolado; ele não deve ser ocultado nem atribuído ao backend AArch64.
+
+
 O caminho de referência do interpretador é executado com o recompilador
 temporariamente suspenso. Isso impede que o `blr` usado para encerrar cada caso
 marque o endereço de escape `0x00000000` para compilação assíncrona. Essa
@@ -227,9 +247,9 @@ test.
 
 ## Critério para o próximo incremento
 
-Validar em dispositivo que o diferencial passa com `passed=9 failed=0 total=9`
-e que o caso `paired-single-special-values` não altera inicialização,
-estabilidade ou desempenho observado dos títulos. Casos posteriores ainda devem
-cobrir aritmética de ponto flutuante com arredondamento, exceções recuperáveis e
-concorrência. Nenhuma otimização do emissor, alocador de registradores ou linking
-de blocos será aprovada apenas por FPS médio.
+O diferencial `9/9` e o caso de valores especiais foram validados em dispositivo.
+O próximo incremento do JIT deve cobrir aritmética de ponto flutuante com
+arredondamento. O crash observado após `coreinit.exit(1)` pertence ao ciclo de
+vida Android e será tratado separadamente. Exceções recuperáveis e concorrência
+continuam pendentes. Nenhuma otimização do emissor, alocador de registradores ou
+linking de blocos será aprovada apenas por FPS médio.
