@@ -52,6 +52,8 @@ static_assert(EncodeX(31, 0, 4, 30, 316) == 0x7C04F278);      // xor r4, r0, r30
 static_assert(EncodeRotate(4, 8, 7, 0, 31) == 0x5488383E);    // rotlwi r8, r4, 7
 static_assert(EncodeFloat(63, 1, 9, 10, 21) == 0xFC29502A);  // fadd f1, f9, f10
 static_assert(EncodeFloatMultiply(10, 11, 12) == 0xFD4B0332); // fmul f10, f11, f12
+static_assert(kPairedSingleSpecialValueCode[0] == 0x10611420); // ps_merge00 f3, f1, f2
+static_assert(kPairedSingleSpecialValueCode[2] == 0x104114A0); // ps_merge10 f2, f1, f2
 
 constexpr std::array<uint32, 8> kIntegerCode{
 	EncodeD(14, 3, 0, 0x1234),          // li r3, 0x1234
@@ -85,6 +87,14 @@ constexpr std::array<uint32, 4> kFloatingPointCode{
 	EncodeFloat(63, 3, 1, 2, 21),       // fadd f3, f1, f2
 	EncodeFloatMultiply(4, 3, 2),        // fmul f4, f3, f2
 	EncodeFloat(4, 5, 1, 2, 21),        // ps_add f5, f1, f2
+	kReturnToInterpreter,
+};
+
+constexpr std::array<uint32, 5> kPairedSingleSpecialValueCode{
+	EncodeFloat(4, 3, 1, 2, 528),       // ps_merge00 f3, f1, f2
+	EncodeFloat(4, 4, 1, 2, 560),       // ps_merge01 f4, f1, f2
+	EncodeFloat(4, 2, 1, 2, 592),       // ps_merge10 f2, f1, f2 (destination aliases fB)
+	EncodeFloat(4, 5, 1, 6, 624),       // ps_merge11 f5, f1, f6
 	kReturnToInterpreter,
 };
 
@@ -169,6 +179,16 @@ void SetupFloatingPoint(PPCInterpreter_t& state, MPTR)
 	state.fpr[1].fp1 = -2.0;
 	state.fpr[2].fp0 = 0.75;
 	state.fpr[2].fp1 = 4.0;
+}
+
+void SetupPairedSingleSpecialValues(PPCInterpreter_t& state, MPTR)
+{
+	state.fpr[1].fp0int = 0x0000000000000000ULL; // +0
+	state.fpr[1].fp1int = 0x8000000000000000ULL; // -0
+	state.fpr[2].fp0int = 0x7FF0000000000000ULL; // +infinity
+	state.fpr[2].fp1int = 0x7FF8000000001234ULL; // quiet NaN with payload
+	state.fpr[6].fp0int = 0x0000000000000001ULL; // smallest positive subnormal
+	state.fpr[6].fp1int = 0xFFF0000000000000ULL; // -infinity
 }
 
 void SetupAtomicSuccess(PPCInterpreter_t& state, MPTR dataAddress)
@@ -272,6 +292,29 @@ std::string ValidateFloatingPoint(const PPCInterpreter_t& state, MPTR)
 	{
 		return fmt::format("unexpected FP/PS result f3={} f4={} ps5=[{},{}]",
 			state.fpr[3].fp0, state.fpr[4].fp0, state.fpr[5].fp0, state.fpr[5].fp1);
+	}
+	return {};
+}
+
+std::string ValidatePairedSingleSpecialValues(const PPCInterpreter_t& state, MPTR)
+{
+	const bool valid =
+		state.fpr[3].fp0int == 0x0000000000000000ULL &&
+		state.fpr[3].fp1int == 0x7FF0000000000000ULL &&
+		state.fpr[4].fp0int == 0x0000000000000000ULL &&
+		state.fpr[4].fp1int == 0x7FF8000000001234ULL &&
+		state.fpr[2].fp0int == 0x8000000000000000ULL &&
+		state.fpr[2].fp1int == 0x7FF0000000000000ULL &&
+		state.fpr[5].fp0int == 0x8000000000000000ULL &&
+		state.fpr[5].fp1int == 0xFFF0000000000000ULL;
+	if (!valid)
+	{
+		return fmt::format(
+			"unexpected PS special-value bits f2=[{:016x},{:016x}] f3=[{:016x},{:016x}] f4=[{:016x},{:016x}] f5=[{:016x},{:016x}]",
+			state.fpr[2].fp0int, state.fpr[2].fp1int,
+			state.fpr[3].fp0int, state.fpr[3].fp1int,
+			state.fpr[4].fp0int, state.fpr[4].fp1int,
+			state.fpr[5].fp0int, state.fpr[5].fp1int);
 	}
 	return {};
 }
@@ -693,11 +736,12 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 
 	const MPTR codeAddress = allocation.GetMPTR();
 	const MPTR dataAddress = codeAddress + kTestDataOffset;
-	const std::array<DifferentialCase, 8> cases{
+	const std::array<DifferentialCase, 9> cases{
 		DifferentialCase{"integer-cr-rotate", kIntegerCode, SetupNoState, nullptr, ValidateInteger, false},
 		DifferentialCase{"conditional-branch", kBranchCode, SetupNoState, nullptr, ValidateBranch, false},
 		DifferentialCase{"load-store-endian", kLoadStoreCode, SetupLoadStore, PrepareLoadStoreMemory, ValidateLoadStore, true},
 		DifferentialCase{"floating-paired-single", kFloatingPointCode, SetupFloatingPoint, nullptr, ValidateFloatingPoint, false},
+		DifferentialCase{"paired-single-special-values", kPairedSingleSpecialValueCode, SetupPairedSingleSpecialValues, nullptr, ValidatePairedSingleSpecialValues, false},
 		DifferentialCase{"atomic-reservation-success", kAtomicSuccessCode, SetupAtomicSuccess, PrepareAtomicMemory, ValidateAtomicSuccess, false},
 		DifferentialCase{"atomic-reservation-compare-failure", kAtomicCompareFailureCode, SetupAtomicCompareFailure, PrepareAtomicMemory, ValidateAtomicCompareFailure, false},
 		DifferentialCase{"memory-barrier-smoke", kMemoryBarrierCode, SetupMemoryBarrier, PrepareMemoryBarrierMemory, ValidateMemoryBarrier, false},
