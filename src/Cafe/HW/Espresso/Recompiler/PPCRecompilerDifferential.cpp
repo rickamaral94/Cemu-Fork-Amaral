@@ -52,8 +52,6 @@ static_assert(EncodeX(31, 0, 4, 30, 316) == 0x7C04F278);      // xor r4, r0, r30
 static_assert(EncodeRotate(4, 8, 7, 0, 31) == 0x5488383E);    // rotlwi r8, r4, 7
 static_assert(EncodeFloat(63, 1, 9, 10, 21) == 0xFC29502A);  // fadd f1, f9, f10
 static_assert(EncodeFloatMultiply(10, 11, 12) == 0xFD4B0332); // fmul f10, f11, f12
-static_assert(kPairedSingleSpecialValueCode[0] == 0x10611420); // ps_merge00 f3, f1, f2
-static_assert(kPairedSingleSpecialValueCode[2] == 0x104114A0); // ps_merge10 f2, f1, f2
 
 constexpr std::array<uint32, 8> kIntegerCode{
 	EncodeD(14, 3, 0, 0x1234),          // li r3, 0x1234
@@ -97,6 +95,9 @@ constexpr std::array<uint32, 5> kPairedSingleSpecialValueCode{
 	EncodeFloat(4, 5, 1, 6, 624),       // ps_merge11 f5, f1, f6
 	kReturnToInterpreter,
 };
+
+static_assert(kPairedSingleSpecialValueCode[0] == 0x10611420); // ps_merge00 f3, f1, f2
+static_assert(kPairedSingleSpecialValueCode[2] == 0x104114A0); // ps_merge10 f2, f1, f2
 
 constexpr std::array<uint32, 4> kAtomicSuccessCode{
 	EncodeX(31, 4, 0, 3, 20),           // lwarx r4, 0, r3
