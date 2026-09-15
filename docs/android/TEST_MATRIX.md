@@ -123,6 +123,15 @@ segundo. As sessões não registraram invalidações originadas pelos títulos
 (`invalidatedFunctions=0`); o teste concorrente e a sessão prolongada continuam
 pendentes.
 
+Na build de valores especiais de Paired Singles, o resumo diferencial deve
+avançar para `passed=9 failed=0 total=9` e incluir
+`case=paired-single-special-values result=PASS`. O caso confirma preservação
+bit a bit de `+0`, `-0`, infinito, NaN silencioso com payload e subnormal nos
+quatro `ps_merge`. Ele também cobre `ps_merge10` com o destino sobreposto ao
+segundo operando, exercitando o caminho temporário do backend ARM64. Essa
+validação não cobre ainda modos de arredondamento, exceções de FP ou propagação
+aritmética de NaN.
+
 Para validar a reclamação do code cache no ponto de quiescência, inicie um
 título, jogue por pelo menos dez minutos e use **Sair** no menu do emulador. A
 ação encerra o processo Android depois do shutdown nativo. Reabra o aplicativo,
