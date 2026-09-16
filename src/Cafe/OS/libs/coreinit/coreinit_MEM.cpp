@@ -253,7 +253,7 @@ namespace coreinit
 		return value;
 	}
 
-	MEMHeapBase* MEMFindContainHeap(const void* memBlock)
+	static MEMHeapBase* MEMFindContainHeapWithoutLock(const void* memBlock)
 	{
 		MEMPTR<void> memBound;
 		uint32be memBoundSize;
@@ -262,8 +262,6 @@ namespace coreinit
 		MEMPTR<void> bucket;
 		uint32be bucketSize;
 		coreinit::OSGetForegroundBucket(&bucket, &bucketSize);
-
-		OSUninterruptibleSpinLock_Acquire(&gHeapGlobalLock);
 
 		MEMHeapBase* result;
 		if ((uintptr_t)memBound.GetPtr() > (uintptr_t)memBlock || (uintptr_t)memBlock >= (uintptr_t)memBound.GetPtr() + (uint32)memBoundSize)
@@ -297,10 +295,64 @@ namespace coreinit
 				result = _MEMList_FindContainingHeap(&g_list2, (MEMHeapBase*)memBlock);
 			}
 		}
-
-		OSUninterruptibleSpinLock_Release(&gHeapGlobalLock);
-
 		return result;
+	}
+
+	MEMHeapBase* MEMFindContainHeap(const void* memBlock)
+	{
+		OSUninterruptibleSpinLock_Acquire(&gHeapGlobalLock);
+		MEMHeapBase* result = MEMFindContainHeapWithoutLock(memBlock);
+		OSUninterruptibleSpinLock_Release(&gHeapGlobalLock);
+		return result;
+	}
+
+	void MEMDebugQueryPointer(MPTR address, MEMDebugPointerInfo& info)
+	{
+		info = {};
+		if (!memory_isAddressRangeAccessible(address, sizeof(uint32)))
+		{
+			info.heapQueryComplete = true;
+			return;
+		}
+		if (!OSUninterruptibleSpinLock_TryAcquire(&gHeapGlobalLock))
+			return;
+
+		MEMHeapBase* heap = MEMFindContainHeapWithoutLock(memory_getPointerFromVirtualOffset(address));
+		info.heapQueryComplete = true;
+		if (!heap)
+		{
+			OSUninterruptibleSpinLock_Release(&gHeapGlobalLock);
+			return;
+		}
+
+		info.heapAddress = memory_getVirtualOffsetFromPointer(heap);
+		info.heapMagic = heap->magic;
+		info.heapStart = heap->heapStart.GetMPTR();
+		info.heapEnd = heap->heapEnd.GetMPTR();
+		info.allocationQueryApplicable = info.heapMagic == MEMHeapMagic::EXP_HEAP;
+		if (!info.allocationQueryApplicable)
+		{
+			OSUninterruptibleSpinLock_Release(&gHeapGlobalLock);
+			return;
+		}
+
+		bool acquiredHeapLock = false;
+		if (heap->flags & MEM_HEAP_OPTION_THREADSAFE)
+		{
+			acquiredHeapLock = OSUninterruptibleSpinLock_TryAcquire(&heap->spinlock);
+			if (!acquiredHeapLock)
+			{
+				OSUninterruptibleSpinLock_Release(&gHeapGlobalLock);
+				return;
+			}
+		}
+
+		info.allocationQueryComplete = true;
+		info.allocationFound = MEMDebugFindExpHeapAllocation(
+			heap, address, info.allocationStart, info.allocationEnd, info.allocationListValid);
+		if (acquiredHeapLock)
+			OSUninterruptibleSpinLock_Release(&heap->spinlock);
+		OSUninterruptibleSpinLock_Release(&gHeapGlobalLock);
 	}
 
 	void* MEMCreateUserHeapHandle(void* heapAddress, uint32 heapSize)
