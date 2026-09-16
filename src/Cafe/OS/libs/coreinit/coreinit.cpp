@@ -37,6 +37,14 @@
 
 CoreinitSharedData* gCoreinitData = nullptr;
 
+constexpr uint32 GetPPCStackTraceCallsite(uint32 returnAddress)
+{
+	return returnAddress >= sizeof(uint32) ? returnAddress - sizeof(uint32) : returnAddress;
+}
+
+static_assert(GetPPCStackTraceCallsite(0x1004) == 0x1000);
+static_assert(GetPPCStackTraceCallsite(0) == 0);
+
 sint32 ScoreStackTrace(OSThread_t* thread, MPTR sp)
 {
 	uint32 stackMinAddr = thread->stackEnd.GetMPTR();
@@ -105,12 +113,22 @@ void DebugLogStackTrace(OSThread_t* thread, MPTR sp)
 		uint32 returnAddress = 0;
 		returnAddress = memory_readU32(nextStackPtr + 4);
 
-		RPLStoredSymbol* symbol = rplSymbolStorage_getByClosestAddress(returnAddress);
+		const uint32 callsiteAddress = GetPPCStackTraceCallsite(returnAddress);
+		RPLStoredSymbol* symbol = rplSymbolStorage_getByClosestAddress(callsiteAddress);
 
 		if(symbol)
-			cemuLog_log(LogType::Force, fmt::format("SP {:08x} ReturnAddr {:08x}   ({}.{}+0x{:x})", nextStackPtr, returnAddress, (const char*)symbol->libName, (const char*)symbol->symbolName, returnAddress - symbol->address));
+		{
+			cemuLog_log(LogType::Force, fmt::format(
+				"SP {:08x} ReturnAddr {:08x} Callsite {:08x}   ({}.{}+0x{:x})",
+				nextStackPtr, returnAddress, callsiteAddress, (const char*)symbol->libName,
+				(const char*)symbol->symbolName, callsiteAddress - symbol->address));
+		}
 		else
-			cemuLog_log(LogType::Force, fmt::format("SP {:08x} ReturnAddr {:08x}", nextStackPtr, returnAddress));
+		{
+			cemuLog_log(LogType::Force, fmt::format(
+				"SP {:08x} ReturnAddr {:08x} Callsite {:08x}", nextStackPtr,
+				returnAddress, callsiteAddress));
+		}
 
 		currentStackPtr = nextStackPtr;
 	}
