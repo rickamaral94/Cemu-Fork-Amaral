@@ -46,6 +46,223 @@ namespace coreinit
 {
 	SysAllocator<OSMutex> s_fsGlobalMutex;
 
+	namespace
+	{
+		constexpr size_t RECENT_FS_OPERATION_COUNT = 32;
+		constexpr size_t RECENT_FS_OPERATION_PATH_LENGTH = 256;
+
+		struct RecentFSOperation
+		{
+			uint64 sequence{};
+			uint64 timestampMicroseconds{};
+			FSA_CMD_OPERATION_TYPE operation{};
+			FSA_RESULT fsaStatus{};
+			FS_RESULT fsStatus{};
+			uint32 handle{};
+			std::array<char, RECENT_FS_OPERATION_PATH_LENGTH> path{};
+		};
+
+		std::mutex s_recentFSOperationsMutex;
+		std::array<RecentFSOperation, RECENT_FS_OPERATION_COUNT> s_recentFSOperations;
+		size_t s_recentFSOperationWriteIndex{};
+		size_t s_recentFSOperationCount{};
+		uint64 s_recentFSOperationSequence{};
+
+		uint64 GetMonotonicTimeMicroseconds()
+		{
+			return std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::steady_clock::now().time_since_epoch()).count();
+		}
+
+		bool IsPathOperation(FSA_CMD_OPERATION_TYPE operation)
+		{
+			switch (operation)
+			{
+			case FSA_CMD_OPERATION_TYPE::CHANGEDIR:
+			case FSA_CMD_OPERATION_TYPE::MAKEDIR:
+			case FSA_CMD_OPERATION_TYPE::REMOVE:
+			case FSA_CMD_OPERATION_TYPE::RENAME:
+			case FSA_CMD_OPERATION_TYPE::OPENDIR:
+			case FSA_CMD_OPERATION_TYPE::OPENFILE:
+			case FSA_CMD_OPERATION_TYPE::QUERYINFO:
+			case FSA_CMD_OPERATION_TYPE::FLUSHQUOTA:
+				return true;
+			default:
+				return false;
+			}
+		}
+
+		const char* GetFSOperationName(FSA_CMD_OPERATION_TYPE operation)
+		{
+			switch (operation)
+			{
+			case FSA_CMD_OPERATION_TYPE::CHANGEDIR: return "CHANGEDIR";
+			case FSA_CMD_OPERATION_TYPE::GETCWD: return "GETCWD";
+			case FSA_CMD_OPERATION_TYPE::MAKEDIR: return "MAKEDIR";
+			case FSA_CMD_OPERATION_TYPE::REMOVE: return "REMOVE";
+			case FSA_CMD_OPERATION_TYPE::RENAME: return "RENAME";
+			case FSA_CMD_OPERATION_TYPE::OPENDIR: return "OPENDIR";
+			case FSA_CMD_OPERATION_TYPE::READDIR: return "READDIR";
+			case FSA_CMD_OPERATION_TYPE::REWINDDIR: return "REWINDDIR";
+			case FSA_CMD_OPERATION_TYPE::CLOSEDIR: return "CLOSEDIR";
+			case FSA_CMD_OPERATION_TYPE::OPENFILE: return "OPENFILE";
+			case FSA_CMD_OPERATION_TYPE::READ: return "READ";
+			case FSA_CMD_OPERATION_TYPE::WRITE: return "WRITE";
+			case FSA_CMD_OPERATION_TYPE::GETPOS: return "GETPOS";
+			case FSA_CMD_OPERATION_TYPE::SETPOS: return "SETPOS";
+			case FSA_CMD_OPERATION_TYPE::ISEOF: return "ISEOF";
+			case FSA_CMD_OPERATION_TYPE::GETSTATFILE: return "GETSTATFILE";
+			case FSA_CMD_OPERATION_TYPE::CLOSEFILE: return "CLOSEFILE";
+			case FSA_CMD_OPERATION_TYPE::FLUSHFILE: return "FLUSHFILE";
+			case FSA_CMD_OPERATION_TYPE::QUERYINFO: return "QUERYINFO";
+			case FSA_CMD_OPERATION_TYPE::APPENDFILE: return "APPENDFILE";
+			case FSA_CMD_OPERATION_TYPE::TRUNCATEFILE: return "TRUNCATEFILE";
+			case FSA_CMD_OPERATION_TYPE::FLUSHQUOTA: return "FLUSHQUOTA";
+			}
+			return "UNKNOWN";
+		}
+
+		void CopyRecentFSOperationPath(std::array<char, RECENT_FS_OPERATION_PATH_LENGTH>& destination, const uint8* source)
+		{
+			if (!source)
+				return;
+			for (size_t index = 0; index + 1 < destination.size() && index < FSA_CMD_PATH_MAX_LENGTH; index++)
+			{
+				destination[index] = static_cast<char>(source[index]);
+				if (source[index] == '\0')
+					return;
+			}
+			destination.back() = '\0';
+		}
+
+		void CaptureRecentFSOperation(FSCmdBlockBody* command, FSA_RESULT fsaStatus, FS_RESULT fsStatus)
+		{
+			const FSA_CMD_OPERATION_TYPE operation = static_cast<FSA_CMD_OPERATION_TYPE>(command->fsaShimBuffer.operationType.value());
+			const bool isFailure = static_cast<sint32>(fsaStatus) < 0 &&
+				fsaStatus != FSA_RESULT::END_OF_DIRECTORY && fsaStatus != FSA_RESULT::END_OF_FILE;
+			if (!isFailure && !IsPathOperation(operation))
+				return;
+
+			RecentFSOperation fsOperation;
+			fsOperation.timestampMicroseconds = GetMonotonicTimeMicroseconds();
+			fsOperation.operation = operation;
+			fsOperation.fsaStatus = fsaStatus;
+			fsOperation.fsStatus = fsStatus;
+			auto& request = command->fsaShimBuffer.request;
+			switch (fsOperation.operation)
+			{
+			case FSA_CMD_OPERATION_TYPE::CHANGEDIR:
+				CopyRecentFSOperationPath(fsOperation.path, request.cmdChangeDir.path);
+				break;
+			case FSA_CMD_OPERATION_TYPE::MAKEDIR:
+				CopyRecentFSOperationPath(fsOperation.path, request.cmdMakeDir.path);
+				break;
+			case FSA_CMD_OPERATION_TYPE::REMOVE:
+				CopyRecentFSOperationPath(fsOperation.path, request.cmdRemove.path);
+				break;
+			case FSA_CMD_OPERATION_TYPE::RENAME:
+				CopyRecentFSOperationPath(fsOperation.path, request.cmdRename.srcPath);
+				break;
+			case FSA_CMD_OPERATION_TYPE::OPENDIR:
+				CopyRecentFSOperationPath(fsOperation.path, request.cmdOpenDir.path);
+				fsOperation.handle = command->fsaShimBuffer.response.cmdOpenDir.dirHandleOutput;
+				break;
+			case FSA_CMD_OPERATION_TYPE::OPENFILE:
+				CopyRecentFSOperationPath(fsOperation.path, request.cmdOpenFile.path);
+				fsOperation.handle = command->fsaShimBuffer.response.cmdOpenFile.fileHandleOutput;
+				break;
+			case FSA_CMD_OPERATION_TYPE::QUERYINFO:
+				CopyRecentFSOperationPath(fsOperation.path, request.cmdQueryInfo.query);
+				break;
+			case FSA_CMD_OPERATION_TYPE::FLUSHQUOTA:
+				CopyRecentFSOperationPath(fsOperation.path, request.cmdFlushQuota.path);
+				break;
+			case FSA_CMD_OPERATION_TYPE::READ:
+				fsOperation.handle = request.cmdReadFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::WRITE:
+				fsOperation.handle = request.cmdWriteFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::READDIR:
+				fsOperation.handle = request.cmdReadDir.dirHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::REWINDDIR:
+				fsOperation.handle = request.cmdRewindDir.dirHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::CLOSEDIR:
+				fsOperation.handle = request.cmdCloseDir.dirHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::GETPOS:
+				fsOperation.handle = request.cmdGetPosFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::SETPOS:
+				fsOperation.handle = request.cmdSetPosFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::ISEOF:
+				fsOperation.handle = request.cmdIsEof.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::GETSTATFILE:
+				fsOperation.handle = request.cmdGetStatFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::CLOSEFILE:
+				fsOperation.handle = request.cmdCloseFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::FLUSHFILE:
+				fsOperation.handle = request.cmdFlushFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::APPENDFILE:
+				fsOperation.handle = request.cmdAppendFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::TRUNCATEFILE:
+				fsOperation.handle = request.cmdTruncateFile.fileHandle;
+				break;
+			default:
+				break;
+			}
+
+			std::lock_guard lock(s_recentFSOperationsMutex);
+			fsOperation.sequence = ++s_recentFSOperationSequence;
+			s_recentFSOperations[s_recentFSOperationWriteIndex] = fsOperation;
+			s_recentFSOperationWriteIndex = (s_recentFSOperationWriteIndex + 1) % s_recentFSOperations.size();
+			s_recentFSOperationCount = std::min(s_recentFSOperationCount + 1, s_recentFSOperations.size());
+		}
+	}
+
+	void DebugLogRecentFSOperations()
+	{
+		std::array<RecentFSOperation, RECENT_FS_OPERATION_COUNT> operations;
+		size_t operationCount{};
+		{
+			std::lock_guard lock(s_recentFSOperationsMutex);
+			operationCount = s_recentFSOperationCount;
+			const size_t firstIndex = (s_recentFSOperationWriteIndex + s_recentFSOperations.size() - operationCount) % s_recentFSOperations.size();
+			for (size_t index = 0; index < operationCount; index++)
+				operations[index] = s_recentFSOperations[(firstIndex + index) % s_recentFSOperations.size()];
+		}
+
+		const uint64 currentTimeMicroseconds = GetMonotonicTimeMicroseconds();
+		cemuLog_log(LogType::Force, "Recent FS operations: count={}", operationCount);
+		for (size_t index = 0; index < operationCount; index++)
+		{
+			const RecentFSOperation& fsOperation = operations[index];
+			const uint64 ageMilliseconds = currentTimeMicroseconds >= fsOperation.timestampMicroseconds ?
+				(currentTimeMicroseconds - fsOperation.timestampMicroseconds) / 1000 : 0;
+			if (fsOperation.path[0] != '\0')
+			{
+				cemuLog_log(LogType::Force, "FS operation #{} ageMs={} operation={} fsaStatus={} fsStatus={} handle={:08x} path={}",
+					fsOperation.sequence, ageMilliseconds, GetFSOperationName(fsOperation.operation),
+					static_cast<sint32>(fsOperation.fsaStatus), static_cast<sint32>(fsOperation.fsStatus),
+					fsOperation.handle, fsOperation.path.data());
+			}
+			else
+			{
+				cemuLog_log(LogType::Force, "FS operation #{} ageMs={} operation={} fsaStatus={} fsStatus={} handle={:08x}",
+					fsOperation.sequence, ageMilliseconds, GetFSOperationName(fsOperation.operation),
+					static_cast<sint32>(fsOperation.fsaStatus), static_cast<sint32>(fsOperation.fsStatus), fsOperation.handle);
+			}
+		}
+	}
+
 	inline void FSLockMutex()
 	{
 		OSLockMutex(&s_fsGlobalMutex);
@@ -726,6 +943,7 @@ namespace coreinit
 
 		// translate error code to FSStatus
 		FS_RESULT fsStatus = _FSAStatusToFSStatus(fsaStatus);
+		CaptureRecentFSOperation(cmd, fsaStatus, fsStatus);
 
 		// On actual hardware this delegates the processing to the AppIO threads, but for now we just run it directly from the IPC thread
 		FSClientBody_t* client = cmd->fsClientBody;

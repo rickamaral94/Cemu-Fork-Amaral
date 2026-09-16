@@ -75,6 +75,34 @@ log e oculta o código que explica o panic. A formatação é limitada a 1.023
 caracteres mais o terminador e ocorre somente depois que o título chama
 `OSPanic`.
 
+Uma build de investigação pode capturar, somente depois de `OSPanic`, os
+registradores PPC, uma janela numérica de 512 bytes da pilha e até 32 operações
+recentes do filesystem. O histórico FS fica em um ring buffer limitado na
+memória, captura operações com caminho e falhas não esperadas, e registra apenas
+idade, operação, código, handle ou caminho virtual limitado. EOF e fim de
+diretório não são falhas; conteúdo de arquivos não é lido para o log. O pacote
+deve conter `PPC panic context`, `PPC GPR`, `PPC stack` e
+`Recent FS operations` antes do stack trace simbólico.
+
+A primeira validação física dessa instrumentação, na build `1f3bd8b-nightly`,
+capturou 16 resultados `NOT_FOUND`: sondagens por `patch0.cpk` a `patch9.cpk` e
+arquivos ainda inexistentes do save novo. Não houve erro de leitura, handle,
+alinhamento ou falha fatal do filesystem. A janela inicial de 128 bytes terminou
+antes do primeiro frame de desalocação; por isso a revisão seguinte registra a
+idade das operações, também conserva aberturas bem-sucedidas e amplia a pilha
+para cobrir os frames de `MemManager` e `CAssetData`.
+
+A revisão ampliada foi validada fisicamente na build `512fd4e-nightly`. Todos os
+CPKs base e os recursos de filme e áudio observados foram abertos com sucesso; a
+última operação do filesystem terminou 10.208 ms antes do `OSPanic`. As únicas
+falhas eram arquivos de save ainda inexistentes na conta nova. A pilha ampliada
+localizou a falha em `MemManager::Region::deallocate` e repetiu o ponteiro
+`0x1b953870` nos frames de desalocação. O JIT diferencial passou 11/11, não houve
+falha do backend ou `SIGSEGV`, e o shutdown reclamou 15.005 funções e
+107.622.400 bytes. Essa evidência remove o filesystem do caminho imediato da
+falha e direciona a investigação para proveniência do ponteiro e gerenciamento
+de memória comum aos modos interpretador e recompilador.
+
 Esse gate foi aprovado no AYN Odin2 Portal com a build `e6b1e26-nightly` e
 Xenoblade Chronicles X v16 (`00050000101c4d00`). Após o mesmo `OSPanic`, o
 log registrou o encaminhamento de `status=1`, não registrou `SIGSEGV` e foi
