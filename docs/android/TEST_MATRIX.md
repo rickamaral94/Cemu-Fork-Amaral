@@ -92,6 +92,17 @@ antes do primeiro frame de desalocação; por isso a revisão seguinte registra 
 idade das operações, também conserva aberturas bem-sucedidas e amplia a pilha
 para cobrir os frames de `MemManager` e `CAssetData`.
 
+A revisão ampliada foi validada fisicamente na build `512fd4e-nightly`. Todos os
+CPKs base e os recursos de filme e áudio observados foram abertos com sucesso; a
+última operação do filesystem terminou 10.208 ms antes do `OSPanic`. As únicas
+falhas eram arquivos de save ainda inexistentes na conta nova. A pilha ampliada
+localizou a falha em `MemManager::Region::deallocate` e repetiu o ponteiro
+`0x1b953870` nos frames de desalocação. O JIT diferencial passou 11/11, não houve
+falha do backend ou `SIGSEGV`, e o shutdown reclamou 15.005 funções e
+107.622.400 bytes. Essa evidência remove o filesystem do caminho imediato da
+falha e direciona a investigação para proveniência do ponteiro e gerenciamento
+de memória comum aos modos interpretador e recompilador.
+
 Esse gate foi aprovado no AYN Odin2 Portal com a build `e6b1e26-nightly` e
 Xenoblade Chronicles X v16 (`00050000101c4d00`). Após o mesmo `OSPanic`, o
 log registrou o encaminhamento de `status=1`, não registrou `SIGSEGV` e foi
