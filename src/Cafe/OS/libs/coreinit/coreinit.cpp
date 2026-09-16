@@ -84,7 +84,7 @@ namespace
 			"PPC GPR 24-31: {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
 			hCPU->gpr[24], hCPU->gpr[25], hCPU->gpr[26], hCPU->gpr[27], hCPU->gpr[28], hCPU->gpr[29], hCPU->gpr[30], hCPU->gpr[31]);
 
-		constexpr uint32 STACK_SNAPSHOT_SIZE = 0x80;
+		constexpr uint32 STACK_SNAPSHOT_SIZE = 0x200;
 		const MPTR stackPointer = hCPU->gpr[1];
 		OSThread_t* currentThread = coreinit::OSGetCurrentThread();
 		if (!currentThread)
@@ -350,7 +350,7 @@ namespace coreinit
 		cemuLog_log(LogType::Force, "File: {}:{}", file, lineNumber);
 		cemuLog_log(LogType::Force, "Msg: {}", formattedMessage);
 		DebugLogPanicPPCContext();
-		DebugLogRecentFSErrors();
+		DebugLogRecentFSOperations();
 		DebugLogStackTrace(coreinit::OSGetCurrentThread(), coreinit::OSGetStackPointer());
 #ifdef CEMU_DEBUG_ASSERT
 		while (true) std::this_thread::sleep_for(std::chrono::milliseconds(100));

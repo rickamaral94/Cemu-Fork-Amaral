@@ -76,12 +76,21 @@ caracteres mais o terminador e ocorre somente depois que o título chama
 `OSPanic`.
 
 Uma build de investigação pode capturar, somente depois de `OSPanic`, os
-registradores PPC, uma janela numérica de 128 bytes da pilha e até 32 falhas
+registradores PPC, uma janela numérica de 512 bytes da pilha e até 32 operações
 recentes do filesystem. O histórico FS fica em um ring buffer limitado na
-memória, ignora EOF e fim de diretório esperados e registra apenas operação,
-código, handle ou caminho virtual limitado. Ele não lê conteúdo de arquivos nem
-adiciona logging contínuo ao disco. O pacote deve conter `PPC panic context`,
-`PPC GPR`, `PPC stack` e `Recent FS errors` antes do stack trace simbólico.
+memória, captura operações com caminho e falhas não esperadas, e registra apenas
+idade, operação, código, handle ou caminho virtual limitado. EOF e fim de
+diretório não são falhas; conteúdo de arquivos não é lido para o log. O pacote
+deve conter `PPC panic context`, `PPC GPR`, `PPC stack` e
+`Recent FS operations` antes do stack trace simbólico.
+
+A primeira validação física dessa instrumentação, na build `1f3bd8b-nightly`,
+capturou 16 resultados `NOT_FOUND`: sondagens por `patch0.cpk` a `patch9.cpk` e
+arquivos ainda inexistentes do save novo. Não houve erro de leitura, handle,
+alinhamento ou falha fatal do filesystem. A janela inicial de 128 bytes terminou
+antes do primeiro frame de desalocação; por isso a revisão seguinte registra a
+idade das operações, também conserva aberturas bem-sucedidas e amplia a pilha
+para cobrir os frames de `MemManager` e `CAssetData`.
 
 Esse gate foi aprovado no AYN Odin2 Portal com a build `e6b1e26-nightly` e
 Xenoblade Chronicles X v16 (`00050000101c4d00`). Após o mesmo `OSPanic`, o
