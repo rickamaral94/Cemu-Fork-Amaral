@@ -75,6 +75,14 @@ log e oculta o código que explica o panic. A formatação é limitada a 1.023
 caracteres mais o terminador e ocorre somente depois que o título chama
 `OSPanic`.
 
+Uma build de investigação pode capturar, somente depois de `OSPanic`, os
+registradores PPC, uma janela numérica de 128 bytes da pilha e até 32 falhas
+recentes do filesystem. O histórico FS fica em um ring buffer limitado na
+memória, ignora EOF e fim de diretório esperados e registra apenas operação,
+código, handle ou caminho virtual limitado. Ele não lê conteúdo de arquivos nem
+adiciona logging contínuo ao disco. O pacote deve conter `PPC panic context`,
+`PPC GPR`, `PPC stack` e `Recent FS errors` antes do stack trace simbólico.
+
 Esse gate foi aprovado no AYN Odin2 Portal com a build `e6b1e26-nightly` e
 Xenoblade Chronicles X v16 (`00050000101c4d00`). Após o mesmo `OSPanic`, o
 log registrou o encaminhamento de `status=1`, não registrou `SIGSEGV` e foi

@@ -45,6 +45,72 @@ constexpr uint32 GetPPCStackTraceCallsite(uint32 returnAddress)
 static_assert(GetPPCStackTraceCallsite(0x1004) == 0x1000);
 static_assert(GetPPCStackTraceCallsite(0) == 0);
 
+namespace
+{
+	uint32 GetConditionRegister(const PPCInterpreter_t* hCPU)
+	{
+		uint32 conditionRegister = 0;
+		for (uint32 bitIndex = 0; bitIndex < 32; bitIndex++)
+		{
+			if (hCPU->cr[bitIndex] != 0)
+				conditionRegister |= 1u << (31 - bitIndex);
+		}
+		return conditionRegister;
+	}
+
+	void DebugLogPanicPPCContext()
+	{
+		PPCInterpreter_t* hCPU = PPCInterpreter_getCurrentInstance();
+		if (!hCPU)
+		{
+			cemuLog_log(LogType::Force, "PPC panic context unavailable");
+			return;
+		}
+
+		cemuLog_log(LogType::Force,
+			"PPC panic context: core={} ip={:08x} lr={:08x} ctr={:08x} xer={:08x} cr={:08x} fpscr={:08x}",
+			PPCInterpreter_getCoreIndex(hCPU), hCPU->instructionPointer, hCPU->spr.LR, hCPU->spr.CTR,
+			PPCInterpreter_getXER(hCPU), GetConditionRegister(hCPU), hCPU->fpscr);
+		cemuLog_log(LogType::Force,
+			"PPC GPR 00-07: {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
+			hCPU->gpr[0], hCPU->gpr[1], hCPU->gpr[2], hCPU->gpr[3], hCPU->gpr[4], hCPU->gpr[5], hCPU->gpr[6], hCPU->gpr[7]);
+		cemuLog_log(LogType::Force,
+			"PPC GPR 08-15: {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
+			hCPU->gpr[8], hCPU->gpr[9], hCPU->gpr[10], hCPU->gpr[11], hCPU->gpr[12], hCPU->gpr[13], hCPU->gpr[14], hCPU->gpr[15]);
+		cemuLog_log(LogType::Force,
+			"PPC GPR 16-23: {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
+			hCPU->gpr[16], hCPU->gpr[17], hCPU->gpr[18], hCPU->gpr[19], hCPU->gpr[20], hCPU->gpr[21], hCPU->gpr[22], hCPU->gpr[23]);
+		cemuLog_log(LogType::Force,
+			"PPC GPR 24-31: {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
+			hCPU->gpr[24], hCPU->gpr[25], hCPU->gpr[26], hCPU->gpr[27], hCPU->gpr[28], hCPU->gpr[29], hCPU->gpr[30], hCPU->gpr[31]);
+
+		constexpr uint32 STACK_SNAPSHOT_SIZE = 0x80;
+		const MPTR stackPointer = hCPU->gpr[1];
+		OSThread_t* currentThread = coreinit::OSGetCurrentThread();
+		if (!currentThread)
+		{
+			cemuLog_log(LogType::Force, "PPC panic stack snapshot unavailable at {:08x}", stackPointer);
+			return;
+		}
+		const MPTR stackMinAddress = currentThread->stackEnd.GetMPTR();
+		const MPTR stackMaxAddress = currentThread->stackBase.GetMPTR();
+		if (stackPointer < stackMinAddress || stackPointer > stackMaxAddress ||
+			stackMaxAddress - stackPointer < STACK_SNAPSHOT_SIZE ||
+			!memory_isAddressRangeAccessible(stackPointer, STACK_SNAPSHOT_SIZE))
+		{
+			cemuLog_log(LogType::Force, "PPC panic stack snapshot unavailable at {:08x}", stackPointer);
+			return;
+		}
+
+		for (uint32 offset = 0; offset < STACK_SNAPSHOT_SIZE; offset += 0x10)
+		{
+			const MPTR address = stackPointer + offset;
+			cemuLog_log(LogType::Force, "PPC stack {:08x}: {:08x} {:08x} {:08x} {:08x}", address,
+				memory_readU32(address), memory_readU32(address + 4), memory_readU32(address + 8), memory_readU32(address + 12));
+		}
+	}
+}
+
 sint32 ScoreStackTrace(OSThread_t* thread, MPTR sp)
 {
 	uint32 stackMinAddr = thread->stackEnd.GetMPTR();
@@ -283,6 +349,8 @@ namespace coreinit
 		cemuLog_log(LogType::Force, "OSPanic!");
 		cemuLog_log(LogType::Force, "File: {}:{}", file, lineNumber);
 		cemuLog_log(LogType::Force, "Msg: {}", formattedMessage);
+		DebugLogPanicPPCContext();
+		DebugLogRecentFSErrors();
 		DebugLogStackTrace(coreinit::OSGetCurrentThread(), coreinit::OSGetStackPointer());
 #ifdef CEMU_DEBUG_ASSERT
 		while (true) std::this_thread::sleep_for(std::chrono::milliseconds(100));

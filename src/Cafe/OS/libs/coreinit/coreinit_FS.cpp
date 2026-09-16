@@ -46,6 +46,186 @@ namespace coreinit
 {
 	SysAllocator<OSMutex> s_fsGlobalMutex;
 
+	namespace
+	{
+		constexpr size_t RECENT_FS_ERROR_COUNT = 32;
+		constexpr size_t RECENT_FS_ERROR_PATH_LENGTH = 256;
+
+		struct RecentFSError
+		{
+			uint64 sequence{};
+			FSA_CMD_OPERATION_TYPE operation{};
+			FSA_RESULT fsaStatus{};
+			FS_RESULT fsStatus{};
+			uint32 handle{};
+			std::array<char, RECENT_FS_ERROR_PATH_LENGTH> path{};
+		};
+
+		std::mutex s_recentFSErrorsMutex;
+		std::array<RecentFSError, RECENT_FS_ERROR_COUNT> s_recentFSErrors;
+		size_t s_recentFSErrorWriteIndex{};
+		size_t s_recentFSErrorCount{};
+		uint64 s_recentFSErrorSequence{};
+
+		const char* GetFSOperationName(FSA_CMD_OPERATION_TYPE operation)
+		{
+			switch (operation)
+			{
+			case FSA_CMD_OPERATION_TYPE::CHANGEDIR: return "CHANGEDIR";
+			case FSA_CMD_OPERATION_TYPE::GETCWD: return "GETCWD";
+			case FSA_CMD_OPERATION_TYPE::MAKEDIR: return "MAKEDIR";
+			case FSA_CMD_OPERATION_TYPE::REMOVE: return "REMOVE";
+			case FSA_CMD_OPERATION_TYPE::RENAME: return "RENAME";
+			case FSA_CMD_OPERATION_TYPE::OPENDIR: return "OPENDIR";
+			case FSA_CMD_OPERATION_TYPE::READDIR: return "READDIR";
+			case FSA_CMD_OPERATION_TYPE::REWINDDIR: return "REWINDDIR";
+			case FSA_CMD_OPERATION_TYPE::CLOSEDIR: return "CLOSEDIR";
+			case FSA_CMD_OPERATION_TYPE::OPENFILE: return "OPENFILE";
+			case FSA_CMD_OPERATION_TYPE::READ: return "READ";
+			case FSA_CMD_OPERATION_TYPE::WRITE: return "WRITE";
+			case FSA_CMD_OPERATION_TYPE::GETPOS: return "GETPOS";
+			case FSA_CMD_OPERATION_TYPE::SETPOS: return "SETPOS";
+			case FSA_CMD_OPERATION_TYPE::ISEOF: return "ISEOF";
+			case FSA_CMD_OPERATION_TYPE::GETSTATFILE: return "GETSTATFILE";
+			case FSA_CMD_OPERATION_TYPE::CLOSEFILE: return "CLOSEFILE";
+			case FSA_CMD_OPERATION_TYPE::FLUSHFILE: return "FLUSHFILE";
+			case FSA_CMD_OPERATION_TYPE::QUERYINFO: return "QUERYINFO";
+			case FSA_CMD_OPERATION_TYPE::APPENDFILE: return "APPENDFILE";
+			case FSA_CMD_OPERATION_TYPE::TRUNCATEFILE: return "TRUNCATEFILE";
+			case FSA_CMD_OPERATION_TYPE::FLUSHQUOTA: return "FLUSHQUOTA";
+			}
+			return "UNKNOWN";
+		}
+
+		void CopyRecentFSErrorPath(std::array<char, RECENT_FS_ERROR_PATH_LENGTH>& destination, const uint8* source)
+		{
+			if (!source)
+				return;
+			for (size_t index = 0; index + 1 < destination.size() && index < FSA_CMD_PATH_MAX_LENGTH; index++)
+			{
+				destination[index] = static_cast<char>(source[index]);
+				if (source[index] == '\0')
+					return;
+			}
+			destination.back() = '\0';
+		}
+
+		void CaptureRecentFSError(FSCmdBlockBody* command, FSA_RESULT fsaStatus, FS_RESULT fsStatus)
+		{
+			if (static_cast<sint32>(fsaStatus) >= 0 || fsaStatus == FSA_RESULT::END_OF_DIRECTORY || fsaStatus == FSA_RESULT::END_OF_FILE)
+				return;
+
+			RecentFSError error;
+			error.operation = static_cast<FSA_CMD_OPERATION_TYPE>(command->fsaShimBuffer.operationType.value());
+			error.fsaStatus = fsaStatus;
+			error.fsStatus = fsStatus;
+			auto& request = command->fsaShimBuffer.request;
+			switch (error.operation)
+			{
+			case FSA_CMD_OPERATION_TYPE::CHANGEDIR:
+				CopyRecentFSErrorPath(error.path, request.cmdChangeDir.path);
+				break;
+			case FSA_CMD_OPERATION_TYPE::MAKEDIR:
+				CopyRecentFSErrorPath(error.path, request.cmdMakeDir.path);
+				break;
+			case FSA_CMD_OPERATION_TYPE::REMOVE:
+				CopyRecentFSErrorPath(error.path, request.cmdRemove.path);
+				break;
+			case FSA_CMD_OPERATION_TYPE::RENAME:
+				CopyRecentFSErrorPath(error.path, request.cmdRename.srcPath);
+				break;
+			case FSA_CMD_OPERATION_TYPE::OPENDIR:
+				CopyRecentFSErrorPath(error.path, request.cmdOpenDir.path);
+				break;
+			case FSA_CMD_OPERATION_TYPE::OPENFILE:
+				CopyRecentFSErrorPath(error.path, request.cmdOpenFile.path);
+				break;
+			case FSA_CMD_OPERATION_TYPE::QUERYINFO:
+				CopyRecentFSErrorPath(error.path, request.cmdQueryInfo.query);
+				break;
+			case FSA_CMD_OPERATION_TYPE::FLUSHQUOTA:
+				CopyRecentFSErrorPath(error.path, request.cmdFlushQuota.path);
+				break;
+			case FSA_CMD_OPERATION_TYPE::READ:
+				error.handle = request.cmdReadFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::WRITE:
+				error.handle = request.cmdWriteFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::READDIR:
+				error.handle = request.cmdReadDir.dirHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::REWINDDIR:
+				error.handle = request.cmdRewindDir.dirHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::CLOSEDIR:
+				error.handle = request.cmdCloseDir.dirHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::GETPOS:
+				error.handle = request.cmdGetPosFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::SETPOS:
+				error.handle = request.cmdSetPosFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::ISEOF:
+				error.handle = request.cmdIsEof.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::GETSTATFILE:
+				error.handle = request.cmdGetStatFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::CLOSEFILE:
+				error.handle = request.cmdCloseFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::FLUSHFILE:
+				error.handle = request.cmdFlushFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::APPENDFILE:
+				error.handle = request.cmdAppendFile.fileHandle;
+				break;
+			case FSA_CMD_OPERATION_TYPE::TRUNCATEFILE:
+				error.handle = request.cmdTruncateFile.fileHandle;
+				break;
+			default:
+				break;
+			}
+
+			std::lock_guard lock(s_recentFSErrorsMutex);
+			error.sequence = ++s_recentFSErrorSequence;
+			s_recentFSErrors[s_recentFSErrorWriteIndex] = error;
+			s_recentFSErrorWriteIndex = (s_recentFSErrorWriteIndex + 1) % s_recentFSErrors.size();
+			s_recentFSErrorCount = std::min(s_recentFSErrorCount + 1, s_recentFSErrors.size());
+		}
+	}
+
+	void DebugLogRecentFSErrors()
+	{
+		std::array<RecentFSError, RECENT_FS_ERROR_COUNT> errors;
+		size_t errorCount{};
+		{
+			std::lock_guard lock(s_recentFSErrorsMutex);
+			errorCount = s_recentFSErrorCount;
+			const size_t firstIndex = (s_recentFSErrorWriteIndex + s_recentFSErrors.size() - errorCount) % s_recentFSErrors.size();
+			for (size_t index = 0; index < errorCount; index++)
+				errors[index] = s_recentFSErrors[(firstIndex + index) % s_recentFSErrors.size()];
+		}
+
+		cemuLog_log(LogType::Force, "Recent FS errors: count={}", errorCount);
+		for (size_t index = 0; index < errorCount; index++)
+		{
+			const RecentFSError& error = errors[index];
+			if (error.path[0] != '\0')
+			{
+				cemuLog_log(LogType::Force, "FS error #{} operation={} fsaStatus={} fsStatus={} path={}", error.sequence,
+					GetFSOperationName(error.operation), static_cast<sint32>(error.fsaStatus), static_cast<sint32>(error.fsStatus), error.path.data());
+			}
+			else
+			{
+				cemuLog_log(LogType::Force, "FS error #{} operation={} fsaStatus={} fsStatus={} handle={:08x}", error.sequence,
+					GetFSOperationName(error.operation), static_cast<sint32>(error.fsaStatus), static_cast<sint32>(error.fsStatus), error.handle);
+			}
+		}
+	}
+
 	inline void FSLockMutex()
 	{
 		OSLockMutex(&s_fsGlobalMutex);
@@ -726,6 +906,7 @@ namespace coreinit
 
 		// translate error code to FSStatus
 		FS_RESULT fsStatus = _FSAStatusToFSStatus(fsaStatus);
+		CaptureRecentFSError(cmd, fsaStatus, fsStatus);
 
 		// On actual hardware this delegates the processing to the AppIO threads, but for now we just run it directly from the IPC thread
 		FSClientBody_t* client = cmd->fsClientBody;

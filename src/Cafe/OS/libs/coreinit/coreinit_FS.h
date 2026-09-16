@@ -240,6 +240,7 @@ namespace coreinit
 
 	// internal interface
 	sint32 __FSQueryInfoAsync(FSClient_t* fsClient, FSCmdBlock_t* fsCmdBlock, uint8* queryString, uint32 queryType, void* queryResult, uint32 errHandling, FSAsyncParams* fsAsyncParams);
+	void DebugLogRecentFSErrors();
 
 	// coreinit exports
 	FS_RESULT FSAddClientEx(FSClient_t* fsClient, uint32 uknR4, uint32 errHandling);
