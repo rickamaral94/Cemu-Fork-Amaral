@@ -70,6 +70,14 @@ preservado como `previous-game-session`. O shutdown reclamou 14.744 funções e
 rejeitada antes da publicação e seus 4.096 bytes foram descartados com
 segurança; não houve falha do backend.
 
+Quando um título chama `OSPanic`, builds de diagnóstico registram o estado dos
+registradores inteiros PPC e uma janela numérica de 128 bytes a partir do stack
+pointer. A captura só ocorre depois do panic, não adiciona instrumentação ao hot
+path e não desreferencia ponteiros nem converte a pilha em texto. O objetivo é
+correlacionar argumentos preservados e frames internos antes de criar qualquer
+workaround por Title ID. Um pacote usado para esse teste deve conter as linhas
+`PPC panic context`, `PPC GPR` e `PPC stack` antes do stack trace simbólico.
+
 O ZIP contém um `report.json` versionado com dados do app, aparelho, tela,
 driver selecionado e configurações gráficas não sensíveis. Quando disponível,
 inclui até 4 MiB do log mais relevante: sessão atual com jogo, sessão anterior
