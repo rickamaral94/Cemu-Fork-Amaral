@@ -68,6 +68,13 @@ e registrar os dois endereços. Quando o endereço de retorno coincide com o
 início do símbolo seguinte, usar o LR diretamente atribui a chamada à função
 errada. Essa correção é apenas diagnóstica e não altera a execução convidada.
 
+`OSPanic` é uma função variádica. O diagnóstico deve formatar a mensagem com os
+argumentos PowerPC a partir de `r6`, depois dos parâmetros `file`, `line` e
+`format`. Registrar apenas o terceiro parâmetro deixa marcadores como `%d` no
+log e oculta o código que explica o panic. A formatação é limitada a 1.023
+caracteres mais o terminador e ocorre somente depois que o título chama
+`OSPanic`.
+
 Esse gate foi aprovado no AYN Odin2 Portal com a build `e6b1e26-nightly` e
 Xenoblade Chronicles X v16 (`00050000101c4d00`). Após o mesmo `OSPanic`, o
 log registrou o encaminhamento de `status=1`, não registrou `SIGSEGV` e foi
