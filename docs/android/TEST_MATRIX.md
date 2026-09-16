@@ -62,6 +62,12 @@ notificação pode iniciar o encerramento. Um `OSPanic` do título continua send
 registrado como falha do título; o frontend não deve acrescentar um segundo
 crash durante a limpeza.
 
+Em stack traces PowerPC, `ReturnAddr` é o LR salvo e aponta para a instrução
+seguinte à chamada. A resolução do símbolo deve usar `Callsite = ReturnAddr - 4`
+e registrar os dois endereços. Quando o endereço de retorno coincide com o
+início do símbolo seguinte, usar o LR diretamente atribui a chamada à função
+errada. Essa correção é apenas diagnóstica e não altera a execução convidada.
+
 Esse gate foi aprovado no AYN Odin2 Portal com a build `e6b1e26-nightly` e
 Xenoblade Chronicles X v16 (`00050000101c4d00`). Após o mesmo `OSPanic`, o
 log registrou o encaminhamento de `status=1`, não registrou `SIGSEGV` e foi
