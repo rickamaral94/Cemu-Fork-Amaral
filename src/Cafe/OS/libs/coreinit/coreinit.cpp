@@ -274,11 +274,15 @@ namespace coreinit
 		return 0;
 	}
 
-	void OSPanic(const char* file, sint32 lineNumber, const char* msg)
+	void OSPanic(const char* file, sint32 lineNumber, const char* format)
 	{
+		ppc_define_va_list(3, 0);
+		char formattedMessage[1024];
+		ppc_vprintf(format, formattedMessage, sizeof(formattedMessage), &vargs);
+
 		cemuLog_log(LogType::Force, "OSPanic!");
 		cemuLog_log(LogType::Force, "File: {}:{}", file, lineNumber);
-		cemuLog_log(LogType::Force, "Msg: {}", msg);
+		cemuLog_log(LogType::Force, "Msg: {}", formattedMessage);
 		DebugLogStackTrace(coreinit::OSGetCurrentThread(), coreinit::OSGetStackPointer());
 #ifdef CEMU_DEBUG_ASSERT
 		while (true) std::this_thread::sleep_for(std::chrono::milliseconds(100));
