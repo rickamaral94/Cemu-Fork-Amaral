@@ -111,6 +111,50 @@ namespace coreinit
 		return valid;
 	}
 
+	bool MEMDebugFindExpHeapAllocation(MEMHeapHandle heap, MPTR address, MPTR& allocationStart, MPTR& allocationEnd, bool& listValid)
+	{
+		allocationStart = 0;
+		allocationEnd = 0;
+		listValid = true;
+		if (!heap || heap->magic != MEMHeapMagic::EXP_HEAP)
+			return false;
+
+		constexpr uint32 MAX_BLOCKS_TO_INSPECT = 0x10000;
+		MEMExpHeapHead2* expHeap = static_cast<MEMExpHeapHead2*>(heap);
+		MEMPTR<MBlock2_t> usedBlock = expHeap->expHeapHead.chainUsedBlocks.headMBlock;
+		for (uint32 blockIndex = 0; usedBlock && blockIndex < MAX_BLOCKS_TO_INSPECT; blockIndex++)
+		{
+			const MPTR blockAddress = usedBlock.GetMPTR();
+			if (!memory_isAddressRangeAccessible(blockAddress, sizeof(MBlock2_t)))
+			{
+				listValid = false;
+				return false;
+			}
+
+			MBlock2_t* block = usedBlock.GetPtr();
+			const MPTR dataStart = blockAddress + sizeof(MBlock2_t);
+			const uint64 dataEnd = static_cast<uint64>(dataStart) + static_cast<uint32>(block->dataSize);
+			if (blockAddress < heap->heapStart.GetMPTR() ||
+				dataEnd > static_cast<uint64>(heap->heapEnd.GetMPTR()) || dataEnd > 0xFFFFFFFFull)
+			{
+				listValid = false;
+				return false;
+			}
+
+			if (address >= dataStart && address < dataEnd)
+			{
+				allocationStart = dataStart;
+				allocationEnd = static_cast<MPTR>(dataEnd);
+				return true;
+			}
+			usedBlock = block->nextBlock;
+		}
+
+		if (usedBlock)
+			listValid = false;
+		return false;
+	}
+
 	void _MEMExpHeap_GetRegionOfMBlock(ExpMemBlockRegion* region, MBlock2_t* memBlock)
 	{
 		uint32 alignment = ((memBlock->fields) >> 8) & 0x7FFFFF;

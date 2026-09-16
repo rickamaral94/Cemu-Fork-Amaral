@@ -102,11 +102,78 @@ namespace
 			return;
 		}
 
+		std::array<uint32, STACK_SNAPSHOT_SIZE / sizeof(uint32)> stackWords;
+		for (uint32 wordIndex = 0; wordIndex < stackWords.size(); wordIndex++)
+			stackWords[wordIndex] = memory_readU32(stackPointer + wordIndex * sizeof(uint32));
+
 		for (uint32 offset = 0; offset < STACK_SNAPSHOT_SIZE; offset += 0x10)
 		{
 			const MPTR address = stackPointer + offset;
+			const uint32 wordIndex = offset / sizeof(uint32);
 			cemuLog_log(LogType::Force, "PPC stack {:08x}: {:08x} {:08x} {:08x} {:08x}", address,
-				memory_readU32(address), memory_readU32(address + 4), memory_readU32(address + 8), memory_readU32(address + 12));
+				stackWords[wordIndex], stackWords[wordIndex + 1], stackWords[wordIndex + 2], stackWords[wordIndex + 3]);
+		}
+
+		constexpr uint32 MAX_REPEATED_POINTERS = 8;
+		uint32 loggedPointerCount = 0;
+		for (uint32 wordIndex = 0; wordIndex < stackWords.size() && loggedPointerCount < MAX_REPEATED_POINTERS; wordIndex++)
+		{
+			const MPTR candidate = stackWords[wordIndex];
+			if (candidate == 0 || (candidate & 3) != 0 ||
+				(candidate >= stackMinAddress && candidate < stackMaxAddress) ||
+				!memory_isAddressRangeAccessible(candidate, sizeof(uint32)))
+			{
+				continue;
+			}
+
+			uint32 occurrenceCount = 0;
+			bool alreadyLogged = false;
+			for (uint32 previousIndex = 0; previousIndex < wordIndex; previousIndex++)
+				alreadyLogged |= stackWords[previousIndex] == candidate;
+			if (alreadyLogged)
+				continue;
+			for (uint32 value : stackWords)
+				occurrenceCount += value == candidate;
+			if (occurrenceCount < 2)
+				continue;
+
+			loggedPointerCount++;
+			coreinit::MEMDebugPointerInfo pointerInfo;
+			coreinit::MEMDebugQueryPointer(candidate, pointerInfo);
+			if (!pointerInfo.heapQueryComplete)
+			{
+				cemuLog_log(LogType::Force, "PPC repeated pointer address={:08x} occurrences={} heapLookup=busy", candidate, occurrenceCount);
+				continue;
+			}
+			if (pointerInfo.heapAddress == 0)
+			{
+				cemuLog_log(LogType::Force, "PPC repeated pointer address={:08x} occurrences={} heap=none", candidate, occurrenceCount);
+				continue;
+			}
+
+			if (!pointerInfo.allocationQueryApplicable)
+			{
+				cemuLog_log(LogType::Force,
+					"PPC repeated pointer address={:08x} occurrences={} heap={:08x} magic={:08x} range={:08x}-{:08x} allocation=not-exp-heap",
+					candidate, occurrenceCount, pointerInfo.heapAddress, static_cast<uint32>(pointerInfo.heapMagic),
+					pointerInfo.heapStart, pointerInfo.heapEnd);
+				continue;
+			}
+			if (!pointerInfo.allocationQueryComplete)
+			{
+				cemuLog_log(LogType::Force,
+					"PPC repeated pointer address={:08x} occurrences={} heap={:08x} magic={:08x} range={:08x}-{:08x} allocationLookup=busy",
+					candidate, occurrenceCount, pointerInfo.heapAddress, static_cast<uint32>(pointerInfo.heapMagic),
+					pointerInfo.heapStart, pointerInfo.heapEnd);
+				continue;
+			}
+
+			cemuLog_log(LogType::Force,
+				"PPC repeated pointer address={:08x} occurrences={} heap={:08x} magic={:08x} range={:08x}-{:08x} allocationFound={} allocation={:08x}-{:08x} listValid={}",
+				candidate, occurrenceCount, pointerInfo.heapAddress, static_cast<uint32>(pointerInfo.heapMagic),
+				pointerInfo.heapStart, pointerInfo.heapEnd, pointerInfo.allocationFound,
+				pointerInfo.allocationStart, pointerInfo.allocationEnd,
+				pointerInfo.allocationListValid);
 		}
 	}
 }

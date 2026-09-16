@@ -103,6 +103,13 @@ falha do backend ou `SIGSEGV`, e o shutdown reclamou 15.005 funções e
 falha e direciona a investigação para proveniência do ponteiro e gerenciamento
 de memória comum aos modos interpretador e recompilador.
 
+Para localizar a proveniência sem registrar conteúdo de memória, a revisão
+seguinte identifica até oito valores alinhados que se repetem na janela da
+pilha e informa o heap `coreinit` e, quando for um `ExpHeap`, o bloco alocado que
+contém cada endereço. As consultas usam somente tentativas não bloqueantes dos
+locks globais e do heap; quando um lock está ocupado, o diagnóstico registra
+`heapLookup=busy` ou `allocationLookup=busy` e continua o shutdown.
+
 Esse gate foi aprovado no AYN Odin2 Portal com a build `e6b1e26-nightly` e
 Xenoblade Chronicles X v16 (`00050000101c4d00`). Após o mesmo `OSPanic`, o
 log registrou o encaminhamento de `status=1`, não registrou `SIGSEGV` e foi
