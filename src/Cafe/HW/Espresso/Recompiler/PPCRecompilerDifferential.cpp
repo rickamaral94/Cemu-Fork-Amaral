@@ -135,6 +135,26 @@ constexpr std::array<uint32, 8> kUnalignedLoadStoreCode{
 	kReturnToInterpreter,
 };
 
+constexpr std::array<uint32, 2> kSubficMinusOneCode{
+	EncodeD(8, 4, 3, -1),                // subfic r4, r3, -1
+	kReturnToInterpreter,
+};
+
+constexpr std::array<uint32, 2> kSthbrxAddressPreservationCode{
+	EncodeX(31, 5, 3, 4, 918),           // sthbrx r5, r3, r4
+	kReturnToInterpreter,
+};
+
+constexpr std::array<uint32, 2> kFcmpoFallbackCode{
+	EncodeX(63, 0, 1, 2, 32),            // fcmpo cr0, f1, f2
+	kReturnToInterpreter,
+};
+
+constexpr std::array<uint32, 2> kMcrfsFallbackCode{
+	EncodeX(63, 0, 0, 0, 64),            // mcrfs cr0, cr0
+	kReturnToInterpreter,
+};
+
 constexpr std::array<uint32, 2> kInvalidationCodeV1{
 	EncodeD(14, 3, 0, 0x1234),          // li r3, 0x1234
 	kReturnToInterpreter,
@@ -150,6 +170,10 @@ static_assert(kAtomicSuccessCode[2] == 0x7CA0192D); // stwcx. r5, 0, r3
 static_assert(kMemoryBarrierCode[2] == 0x7C0006AC); // eieio
 static_assert(kMemoryBarrierCode[4] == 0x7C0004AC); // sync
 static_assert(kMemoryBarrierCode[5] == 0x4C00012C); // isync
+static_assert(kSubficMinusOneCode[0] == 0x2083FFFF); // subfic r4, r3, -1
+static_assert(kSthbrxAddressPreservationCode[0] == 0x7CA3272C); // sthbrx r5, r3, r4
+static_assert(kFcmpoFallbackCode[0] == 0xFC011040); // fcmpo cr0, f1, f2
+static_assert(kMcrfsFallbackCode[0] == 0xFC000080); // mcrfs cr0, cr0
 
 using StateSetup = void (*)(PPCInterpreter_t&, MPTR);
 using MemorySetup = void (*)(MPTR);
@@ -223,6 +247,19 @@ void SetupUnalignedLoadStore(PPCInterpreter_t& state, MPTR dataAddress)
 	state.gpr[3] = dataAddress;
 }
 
+void SetupSubficMinusOne(PPCInterpreter_t& state, MPTR)
+{
+	state.gpr[3] = 0;
+	state.xer_ca = 0;
+}
+
+void SetupSthbrxAddressPreservation(PPCInterpreter_t& state, MPTR dataAddress)
+{
+	state.gpr[3] = dataAddress;
+	state.gpr[4] = 2;
+	state.gpr[5] = 0x1234;
+}
+
 void PrepareLoadStoreMemory(MPTR dataAddress)
 {
 	memory_writeU32(dataAddress, 0x11223344);
@@ -256,6 +293,12 @@ void PrepareUnalignedLoadStoreMemory(MPTR dataAddress)
 	constexpr std::array<uint8, 8> doubleBytes{0x3F, 0xF8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 	for (size_t i = 0; i < doubleBytes.size(); ++i)
 		memory_writeU8(dataAddress + 17 + static_cast<MPTR>(i), doubleBytes[i]);
+}
+
+void PrepareSthbrxMemory(MPTR dataAddress)
+{
+	for (MPTR offset = 0; offset < 8; ++offset)
+		memory_writeU8(dataAddress + offset, 0);
 }
 
 std::string ValidateInteger(const PPCInterpreter_t& state, MPTR)
@@ -393,6 +436,25 @@ std::string ValidateUnalignedLoadStore(const PPCInterpreter_t& state, MPTR dataA
 	return {};
 }
 
+std::string ValidateSubficMinusOne(const PPCInterpreter_t& state, MPTR)
+{
+	if (state.gpr[4] != 0xFFFFFFFF || state.xer_ca != 1)
+		return fmt::format("unexpected subfic result r4={:08x} xer_ca={}", state.gpr[4], state.xer_ca);
+	return {};
+}
+
+std::string ValidateSthbrxAddressPreservation(const PPCInterpreter_t& state, MPTR dataAddress)
+{
+	if (state.gpr[3] != dataAddress)
+		return fmt::format("sthbrx changed address register r3={:08x} expected={:08x}", state.gpr[3], dataAddress);
+	if (memory_readU8(dataAddress + 2) != 0x34 || memory_readU8(dataAddress + 3) != 0x12)
+	{
+		return fmt::format("unexpected sthbrx bytes [{:02x},{:02x}]",
+			memory_readU8(dataAddress + 2), memory_readU8(dataAddress + 3));
+	}
+	return {};
+}
+
 std::string CompareArchitecturalState(const PPCInterpreter_t& interpreter, const PPCInterpreter_t& jit)
 {
 	for (size_t i = 0; i < std::size(interpreter.gpr); ++i)
@@ -490,6 +552,25 @@ PPCRecFunction_t* CompileTestFunction(MPTR codeAddress, void*& entryPoint,
 	PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
 	delete function;
 	return nullptr;
+}
+
+bool RunExpectedFallbackCase(const char* name, std::span<const uint32> code, MPTR codeAddress)
+{
+	for (size_t i = 0; i < code.size(); ++i)
+		memory_writeU32(codeAddress + static_cast<MPTR>(i * sizeof(uint32)), code[i]);
+
+	void* entryPoint = nullptr;
+	PPCRecFunction_t* function = CompileTestFunction(codeAddress, entryPoint);
+	if (!function)
+	{
+		cemuLog_log(LogType::Force, "JIT ARM64 fallback: case={} result=PASS", name);
+		return true;
+	}
+
+	PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
+	delete function;
+	cemuLog_log(LogType::Force, "JIT ARM64 fallback: case={} result=FAIL reason=unexpected-translation", name);
+	return false;
 }
 
 bool RunCase(const DifferentialCase& testCase, MPTR codeAddress, MPTR dataAddress)
@@ -737,7 +818,7 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 
 	const MPTR codeAddress = allocation.GetMPTR();
 	const MPTR dataAddress = codeAddress + kTestDataOffset;
-	const std::array<DifferentialCase, 9> cases{
+	const std::array<DifferentialCase, 11> cases{
 		DifferentialCase{"integer-cr-rotate", kIntegerCode, SetupNoState, nullptr, ValidateInteger, false},
 		DifferentialCase{"conditional-branch", kBranchCode, SetupNoState, nullptr, ValidateBranch, false},
 		DifferentialCase{"load-store-endian", kLoadStoreCode, SetupLoadStore, PrepareLoadStoreMemory, ValidateLoadStore, true},
@@ -747,6 +828,8 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 		DifferentialCase{"atomic-reservation-compare-failure", kAtomicCompareFailureCode, SetupAtomicCompareFailure, PrepareAtomicMemory, ValidateAtomicCompareFailure, false},
 		DifferentialCase{"memory-barrier-smoke", kMemoryBarrierCode, SetupMemoryBarrier, PrepareMemoryBarrierMemory, ValidateMemoryBarrier, false},
 		DifferentialCase{"unaligned-load-store", kUnalignedLoadStoreCode, SetupUnalignedLoadStore, PrepareUnalignedLoadStoreMemory, ValidateUnalignedLoadStore, false},
+		DifferentialCase{"subfic-minus-one-carry", kSubficMinusOneCode, SetupSubficMinusOne, nullptr, ValidateSubficMinusOne, false},
+		DifferentialCase{"sthbrx-address-preservation", kSthbrxAddressPreservationCode, SetupSthbrxAddressPreservation, PrepareSthbrxMemory, ValidateSthbrxAddressPreservation, false},
 	};
 
 	uint32 passedCount = 0;
@@ -755,6 +838,10 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 		if (RunCase(testCase, codeAddress, dataAddress))
 			passedCount++;
 	}
+	const bool fcmpoFallback = RunExpectedFallbackCase("fcmpo", kFcmpoFallbackCode, codeAddress);
+	const bool mcrfsFallback = RunExpectedFallbackCase("mcrfs", kMcrfsFallbackCode, codeAddress);
+	cemuLog_log(LogType::Force, "JIT ARM64 fallback: result={} fcmpoRejected={} mcrfsRejected={}",
+		fcmpoFallback && mcrfsFallback ? "PASS" : "FAIL", fcmpoFallback, mcrfsFallback);
 	RunPublishedInvalidationCase(codeAddress);
 	RPLLoader_ReleaseCodeCaveMem(allocation);
 

@@ -149,6 +149,14 @@ segundo operando, exercitando o caminho temporário do backend ARM64. Essa
 validação não cobre ainda modos de arredondamento, exceções de FP ou propagação
 aritmética de NaN.
 
+Na build com as correções PPC sincronizadas do upstream, o resumo diferencial
+deve avançar para `passed=11 failed=0 total=11`, incluindo
+`case=subfic-minus-one-carry` e `case=sthbrx-address-preservation`. O log também
+deve registrar `JIT ARM64 fallback: result=PASS fcmpoRejected=true
+mcrfsRejected=true`. `fcmpo` e `mcrfs` ainda não são declarados nativos no JIT;
+o gate comprova que deixam de ser confundidos com `fcmpu` e retornam com
+segurança ao interpretador.
+
 O gate foi aprovado no AYN Odin2 Portal com a build `d8b93c2-nightly` durante
 uma sessão de aproximadamente 4 minutos e 8 segundos de Xenoblade Chronicles X.
 O diferencial passou `9/9`, a invalidação permaneceu integralmente `PASS` e
