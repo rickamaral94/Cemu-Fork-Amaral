@@ -69,7 +69,7 @@ há instrumentação adicionada ao caminho que executa cada bloco recompilado.
 
 ## Testes diferenciais da nightly
 
-Builds nightly executam nove casos sintéticos isolados antes do início do
+Builds nightly executam onze casos sintéticos isolados antes do início do
 título. Cada caso parte do mesmo estado, roda uma vez no interpretador e uma vez
 no JIT AArch64 e compara o estado arquitetural resultante. A cobertura inicial
 inclui:
@@ -85,6 +85,14 @@ inclui:
 - smoke test de tradução para `eieio`, `sync` e `isync`.
 - loads e stores desalinhados de 16, 32 e 64 bits, incluindo extensão de sinal,
   endianness e ponto flutuante de precisão dupla.
+- carry de `subfic` com imediato `-1`, que exige preservar o carry de entrada
+  separado do imediato já convertido;
+- `sthbrx` com confirmação de que o registrador-base permanece inalterado.
+
+Dois casos negativos confirmam separadamente que `fcmpo` e `mcrfs` não são
+traduzidos como `fcmpu`. Como `fcmpo` ainda não possui implementação completa no
+backend, ambos devem recusar a tradução e seguir pelo fallback do interpretador,
+em vez de executar uma semântica diferente silenciosamente.
 
 Os casos atômicos também verificam a limpeza da reserva e todos os bits de CR0.
 O bit SO de CR0 deve copiar `XER[SO]`; ele não pode reutilizar o valor anterior
