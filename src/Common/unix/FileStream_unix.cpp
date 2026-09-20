@@ -243,12 +243,12 @@ void FileStreamUnix::SyncReadWriteSeek(bool nextOpIsWrite)
 	m_prevOperationWasWrite = nextOpIsWrite;
 }
 
-bool FileStream::WriteFileAtomic(const fs::path& path, std::span<uint8> fileData, bool allowTargetFileRename)
+bool FileStreamUnix::WriteFileAtomic(const fs::path& path, std::span<uint8> fileData, bool allowTargetFileRename)
 {
 	std::error_code ec;
 	fs::path altPath = path;
 	altPath.replace_extension( _utf8ToPath(_pathToUtf8(altPath.extension()).append("_tmp")));
-	FileStream* fsAlt = FileStream::createFile2(altPath);
+	FileStreamUnix* fsAlt = FileStreamUnix::createFile2(altPath);
 	if (!fsAlt)
 		return false;
 	if (fsAlt->writeData(fileData.data(), fileData.size()) != fileData.size())
