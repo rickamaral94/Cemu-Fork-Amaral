@@ -45,6 +45,9 @@ class FileStreamUnix
 	~FileStreamUnix();
 	FileStreamUnix() {};
 
+	// atomic helper
+	static bool WriteFileAtomic(const fs::path& path, std::span<uint8> fileData, bool allowTargetFileRename = false);
+
  private:
 	void SyncReadWriteSeek(bool nextOpIsWrite);
 	FileStreamUnix(const fs::path& path, bool isOpen, bool isWriteable);
