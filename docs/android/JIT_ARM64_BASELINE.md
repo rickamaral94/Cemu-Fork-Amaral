@@ -180,6 +180,25 @@ não invalidaram funções durante essas sessões (`invalidatedFunctions=0`), en
 a validação não comprova invalidação concorrente causada pelo jogo nem limita o
 crescimento do code cache em uma sessão longa.
 
+## Invalidação durante execução concorrente
+
+A nightly também mantém uma tradução sintética ARM64 executando em uma thread
+host enquanto outra thread invalida a faixa PowerPC correspondente. O teste
+confirma que a entrada é removida da jump table, novas entradas não alcançam o
+ponteiro obsoleto e a execução que já estava ativa consegue terminar. A mapping
+nativa só é reclamada depois do `join`, em um ponto de quiescência explícito.
+
+O log esperado é:
+
+`JIT ARM64 concurrent invalidation: result=PASS executionStarted=true
+unlinkedWhileRunning=true staleEntryBlocked=true activeExecutionCompleted=true
+reclaimedAfterJoin=true`
+
+Esse teste valida a regra de retenção usada pelo fork, mas não implementa
+reclamação durante gameplay e não simula o escalonamento completo dos três
+núcleos PowerPC. Reutilização de código durante a sessão continua dependendo de
+uma estratégia por época/RCU ou barreira global comprovada.
+
 ## Valores especiais de Paired Singles
 
 O caso `paired-single-special-values` amplia o diferencial sem depender de
