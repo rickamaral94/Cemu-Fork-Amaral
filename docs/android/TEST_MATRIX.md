@@ -188,6 +188,15 @@ segundo. As sessões não registraram invalidações originadas pelos títulos
 (`invalidatedFunctions=0`); o teste concorrente e a sessão prolongada continuam
 pendentes.
 
+Na build de invalidação concorrente, o log deve registrar `JIT ARM64 concurrent
+invalidation: result=PASS` com `executionStarted=true`,
+`unlinkedWhileRunning=true`, `staleEntryBlocked=true`,
+`activeExecutionCompleted=true` e `reclaimedAfterJoin=true`. O caso mantém
+uma tradução sintética executando enquanto sua faixa é invalidada, comprova que
+novas entradas são bloqueadas e só reclama a mapping após o término da thread.
+Ele não libera código durante gameplay nem substitui uma futura estratégia por
+época/RCU.
+
 Na build de valores especiais de Paired Singles, o resumo diferencial deve
 avançar para `passed=9 failed=0 total=9` e incluir
 `case=paired-single-special-values result=PASS`. O caso confirma preservação

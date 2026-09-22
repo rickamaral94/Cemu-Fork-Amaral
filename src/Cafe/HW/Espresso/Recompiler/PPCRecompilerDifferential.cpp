@@ -165,6 +165,17 @@ constexpr std::array<uint32, 2> kInvalidationCodeV2{
 	kReturnToInterpreter,
 };
 
+constexpr std::array<uint32, 8> kConcurrentInvalidationCode{
+	EncodeD(14, 4, 0, 1),               // li r4, 1
+	EncodeD(36, 4, 3, 4),               // stw r4, 4(r3)
+	EncodeX(31, 0, 0, 0, 598),          // sync
+	EncodeD(32, 5, 3, 0),               // lwz r5, 0(r3)
+	EncodeD(11, 0, 5, 0),               // cmpwi r5, 0
+	0x4182FFF8,                          // beq -8
+	EncodeD(14, 6, 0, 0x2468),          // li r6, 0x2468
+	kReturnToInterpreter,
+};
+
 static_assert(kAtomicSuccessCode[0] == 0x7C801828); // lwarx r4, 0, r3
 static_assert(kAtomicSuccessCode[2] == 0x7CA0192D); // stwcx. r5, 0, r3
 static_assert(kMemoryBarrierCode[2] == 0x7C0006AC); // eieio
@@ -174,6 +185,7 @@ static_assert(kSubficMinusOneCode[0] == 0x2083FFFF); // subfic r4, r3, -1
 static_assert(kSthbrxAddressPreservationCode[0] == 0x7CA3272C); // sthbrx r5, r3, r4
 static_assert(kFcmpoFallbackCode[0] == 0xFC011040); // fcmpo cr0, f1, f2
 static_assert(kMcrfsFallbackCode[0] == 0xFC000080); // mcrfs cr0, cr0
+static_assert(kConcurrentInvalidationCode[5] == 0x4182FFF8); // beq -8
 
 using StateSetup = void (*)(PPCInterpreter_t&, MPTR);
 using MemorySetup = void (*)(MPTR);
@@ -805,6 +817,111 @@ bool RunPublishedInvalidationCase(MPTR codeAddress)
 	}
 	return passed;
 }
+
+bool RunConcurrentInvalidationCase(MPTR codeAddress, MPTR dataAddress)
+{
+	for (size_t i = 0; i < kConcurrentInvalidationCode.size(); ++i)
+		memory_writeU32(codeAddress + static_cast<MPTR>(i * sizeof(uint32)), kConcurrentInvalidationCode[i]);
+	memory_writeU32(dataAddress, 0);
+	memory_writeU32(dataAddress + sizeof(uint32), 0);
+
+	PPCFunctionBoundaryTracker::PPCRange_t range;
+	std::vector<std::pair<MPTR, uint32>> entryPoints;
+	void* hostEntryPoint = nullptr;
+	PPCRecFunction_t* function = CompileTestFunction(
+		codeAddress, hostEntryPoint, &range, &entryPoints);
+	if (!function || !hostEntryPoint)
+	{
+		cemuLog_log(LogType::Force, "JIT ARM64 concurrent invalidation: result=FAIL reason=compile");
+		return false;
+	}
+
+	auto& jumpEntry = ppcRecompilerInstanceData->ppcRecompilerDirectJumpTable[codeAddress / 4];
+	if (jumpEntry != PPCRecompiler_leaveRecompilerCode_unvisited)
+	{
+		PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
+		delete function;
+		cemuLog_log(LogType::Force, "JIT ARM64 concurrent invalidation: result=FAIL reason=jump-table-not-clean");
+		return false;
+	}
+
+	jumpEntry = PPCRecompiler_leaveRecompilerCode_visited;
+	const bool published = PPCRecompiler_makeRecompiledFunctionActive(
+		codeAddress, range, function, entryPoints);
+	if (!published)
+	{
+		jumpEntry = PPCRecompiler_leaveRecompilerCode_unvisited;
+		PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
+		delete function;
+		cemuLog_log(LogType::Force, "JIT ARM64 concurrent invalidation: result=FAIL reason=publish");
+		return false;
+	}
+
+	PPCInterpreterGlobal_t globalState{};
+	PPCInterpreter_t executingState{};
+	executingState.instructionPointer = codeAddress;
+	executingState.spr.LR = 0;
+	executingState.remainingCycles = 1000000;
+	executingState.gpr[3] = dataAddress;
+	executingState.LSQE = 1;
+	executingState.PSE = 1;
+	executingState.global = &globalState;
+	bool executionExited = false;
+	std::thread executingThread([&]()
+	{
+		executionExited = ExecuteJit(executingState, hostEntryPoint);
+	});
+
+	const auto startDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (memory_readU32(dataAddress + sizeof(uint32)) != 1 &&
+		std::chrono::steady_clock::now() < startDeadline)
+	{
+		std::this_thread::yield();
+	}
+	const bool executionStarted = memory_readU32(dataAddress + sizeof(uint32)) == 1;
+
+	PPCRecompiler_invalidateRange(
+		codeAddress, codeAddress + static_cast<uint32>(kConcurrentInvalidationCode.size() * sizeof(uint32)));
+	const bool unlinkedWhileRunning = jumpEntry == PPCRecompiler_leaveRecompilerCode_unvisited;
+
+	PPCInterpreter_t staleEntryState{};
+	staleEntryState.instructionPointer = codeAddress;
+	staleEntryState.spr.LR = 0;
+	staleEntryState.remainingCycles = 1000000;
+	staleEntryState.gpr[6] = 0xA5A5A5A5;
+	staleEntryState.LSQE = 1;
+	staleEntryState.PSE = 1;
+	staleEntryState.global = &globalState;
+	PPCRecompiler_attemptEnterWithoutRecompile(&staleEntryState, codeAddress);
+	const bool staleEntryBlocked = staleEntryState.instructionPointer == codeAddress &&
+		staleEntryState.gpr[6] == 0xA5A5A5A5;
+
+	// The invalidated mapping must remain alive until the executing thread has
+	// left it. Release the synthetic guest loop, join, and reclaim only at that
+	// explicit quiescent point.
+	memory_writeU32(dataAddress, 1);
+	executingThread.join();
+	const bool activeExecutionCompleted = executionExited &&
+		executingState.instructionPointer == 0 && executingState.gpr[6] == 0x2468;
+	const bool reclaimedAfterJoin =
+		PPCRecompiler_CleanupPublishedAArch64TestFunction(function);
+
+	const bool passed = executionStarted && unlinkedWhileRunning &&
+		staleEntryBlocked && activeExecutionCompleted && reclaimedAfterJoin;
+	if (passed)
+	{
+		cemuLog_log(LogType::Force,
+			"JIT ARM64 concurrent invalidation: result=PASS executionStarted=true unlinkedWhileRunning=true staleEntryBlocked=true activeExecutionCompleted=true reclaimedAfterJoin=true");
+	}
+	else
+	{
+		cemuLog_log(LogType::Force,
+			"JIT ARM64 concurrent invalidation: result=FAIL executionStarted={} unlinkedWhileRunning={} staleEntryBlocked={} activeExecutionCompleted={} reclaimedAfterJoin={}",
+			executionStarted, unlinkedWhileRunning, staleEntryBlocked,
+			activeExecutionCompleted, reclaimedAfterJoin);
+	}
+	return passed;
+}
 }
 
 void PPCRecompiler_RunAArch64DifferentialTests()
@@ -843,6 +960,7 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 	cemuLog_log(LogType::Force, "JIT ARM64 fallback: result={} fcmpoRejected={} mcrfsRejected={}",
 		fcmpoFallback && mcrfsFallback ? "PASS" : "FAIL", fcmpoFallback, mcrfsFallback);
 	RunPublishedInvalidationCase(codeAddress);
+	RunConcurrentInvalidationCase(codeAddress, dataAddress);
 	RPLLoader_ReleaseCodeCaveMem(allocation);
 
 	cemuLog_log(LogType::Force, "JIT ARM64 differential: result={} passed={} failed={} total={}",
