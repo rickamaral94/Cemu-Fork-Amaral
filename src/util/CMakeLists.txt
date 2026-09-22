@@ -39,6 +39,7 @@ add_library(CemuUtil
   helpers/SystemException.h
   helpers/TempState.h
   helpers/ZArchiveHelpers.h
+  helpers/ZipArchive.h
   highresolutiontimer/HighResolutionTimer.cpp
   highresolutiontimer/HighResolutionTimer.h
   ImageWriter/bmp.h
