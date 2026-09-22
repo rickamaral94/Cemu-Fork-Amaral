@@ -68,6 +68,21 @@ namespace coreinit
 		USER_HEAP = 'USRH',
 	};
 
+	struct MEMDebugPointerInfo
+	{
+		bool heapQueryComplete{};
+		bool allocationQueryApplicable{};
+		bool allocationQueryComplete{};
+		bool allocationListValid{};
+		bool allocationFound{};
+		MPTR heapAddress{};
+		MEMHeapMagic heapMagic{};
+		MPTR heapStart{};
+		MPTR heapEnd{};
+		MPTR allocationStart{};
+		MPTR allocationEnd{};
+	};
+
 	struct MEMLink
 	{
 		MEMPTR<void> prev;
@@ -162,6 +177,7 @@ namespace coreinit
 	uint32 MEMGetFillValForHeap(HEAP_FILL_TYPE type);
 	uint32 MEMSetFillValForHeap(HEAP_FILL_TYPE type, uint32 value);
 	MEMHeapHandle MEMFindContainHeap(const void* memBlock);
+	void MEMDebugQueryPointer(MPTR address, MEMDebugPointerInfo& info);
 
 	/* Heap default allocators */
 

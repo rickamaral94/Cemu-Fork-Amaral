@@ -49,4 +49,5 @@ namespace coreinit
 	void* MEMAllocFromExpHeapEx(MEMHeapHandle heap, uint32 size, sint32 alignment);
 	void MEMFreeToExpHeap(MEMHeapHandle heap, void* mem);
 	uint32 MEMGetAllocatableSizeForExpHeapEx(MEMHeapHandle heap, sint32 alignment);
+	bool MEMDebugFindExpHeapAllocation(MEMHeapHandle heap, MPTR address, MPTR& allocationStart, MPTR& allocationEnd, bool& listValid);
 }
