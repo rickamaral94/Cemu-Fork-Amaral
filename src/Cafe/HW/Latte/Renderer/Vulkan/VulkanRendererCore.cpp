@@ -1039,7 +1039,10 @@ void VulkanRenderer::sync_inputTexturesChanged(bool withinFeedbackLoopRenderPass
 		// Relax color feedback without a guest sync, but keep the read indices above updated for later passes.
 		if (withinFeedbackLoopRenderPass && !m_state.descriptorSetsChanged && !m_state.colorBufferSyncPending
 			&& m_state.m_curRenderpassSelfDependencyInfo.GetAspectMask() == VK_IMAGE_ASPECT_COLOR_BIT)
+		{
+			performanceMonitor.vk.numSkippedColorFeedbackBarriersPerFrame.increment();
 			return;
+		}
 
 		VkMemoryBarrier memoryBarrier{};
 		memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -1079,6 +1082,7 @@ void VulkanRenderer::sync_inputTexturesChanged(bool withinFeedbackLoopRenderPass
 		vkCmdPipelineBarrier(m_state.currentCommandBuffer, srcStage, dstStage, dependencyFlags, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
 
 		performanceMonitor.vk.numDrawBarriersPerFrame.increment();
+		performanceMonitor.vk.numInputTextureBarriersPerFrame.increment();
 
 		m_state.currentFlushIndex++;
 	}
@@ -1129,6 +1133,7 @@ void VulkanRenderer::sync_RenderPassLoadTextures(CachedFBOVk* fboVk)
 		vkCmdPipelineBarrier(m_state.currentCommandBuffer, srcStage, dstStage, 0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
 
 		performanceMonitor.vk.numDrawBarriersPerFrame.increment();
+		performanceMonitor.vk.numRenderPassLoadBarriersPerFrame.increment();
 
 		m_state.currentFlushIndex++;
 	}
@@ -1213,6 +1218,7 @@ void VulkanRenderer::draw_setRenderPass()
 	bool feedbackLoopHandlesSelfDependency = UseAttachmentFeedbackLoop() && currentSelfDependencyInfo.HasSelfDependency() && !currentSelfDependencyInfo.HasVertexOrGeometrySelfDependency();
 	bool selfDependencyNeedsPassSplit = currentSelfDependencyInfo.HasSelfDependency() && !feedbackLoopHandlesSelfDependency;
 	bool overridePassReuse = selfDependencyNeedsPassSplit && (GetConfig().vk_accurate_barriers || m_state.activePipelineInfo->neverSkipAccurateBarrier);
+	const bool renderPassFboChanged = m_state.activeRenderpassFBO != fboVk;
 
 	if (!overridePassReuse && m_state.activeRenderpassFBO == fboVk)
 	{
@@ -1262,6 +1268,10 @@ void VulkanRenderer::draw_setRenderPass()
 	vkObjFramebuffer->flagForCurrentCommandBuffer();
 
 	performanceMonitor.vk.numBeginRenderpassPerFrame.increment();
+	if (renderPassFboChanged)
+		performanceMonitor.vk.numRenderPassFboChangesPerFrame.increment();
+	if (overridePassReuse && !renderPassFboChanged)
+		performanceMonitor.vk.numRenderPassSelfDependencySplitsPerFrame.increment();
 }
 
 void VulkanRenderer::draw_endRenderPass()
