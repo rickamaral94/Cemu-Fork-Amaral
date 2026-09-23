@@ -3928,6 +3928,35 @@ void VulkanRenderer::buffer_bindVertexBuffers(std::span<BindBufferParam> binding
 	}
 }
 
+bool VulkanRenderer::buffer_tryBindSmallVertexBuffer(uint8 bufferIndex, uint16 stride, const uint8* data, uint32 size)
+{
+#if BOOST_PLAT_ANDROID
+	static constexpr uint32 kMaxDirectVertexUploadSize = 4 * 1024;
+	static constexpr uint32 kMaxDirectVertexUploadsPerFrame = 512;
+	static constexpr uint32 kMaxDirectVertexUploadBytesPerFrame = 512 * 1024;
+	if (size == 0 || size > kMaxDirectVertexUploadSize)
+		return false;
+	if (performanceMonitor.vk.numDirectVertexUploadsPerFrame.get() >= kMaxDirectVertexUploadsPerFrame ||
+		performanceMonitor.vk.numDirectVertexUploadBytesPerFrame.get() + size > kMaxDirectVertexUploadBytesPerFrame)
+		return false;
+	(void)stride;
+
+	auto& vertexAllocator = memoryManager->getMetalStrideWorkaroundAllocator();
+	auto reservation = vertexAllocator.AllocateBufferMemory(size, 128);
+	memcpy(reservation.memPtr, data, size);
+
+	cemu_assert_debug(bufferIndex < Latte::GPU_LIMITS::NUM_VERTEX_BUFFERS);
+	m_state.currentVertexBinding[bufferIndex].offset = 0xFFFFFFFF;
+	VkDeviceSize bindOffset = reservation.bufferOffset;
+	vkCmdBindVertexBuffers(m_state.currentCommandBuffer, bufferIndex, 1, &reservation.vkBuffer, &bindOffset);
+	performanceMonitor.vk.numDirectVertexUploadsPerFrame.increment();
+	performanceMonitor.vk.numDirectVertexUploadBytesPerFrame.add(size);
+	return true;
+#else
+	return false;
+#endif
+}
+
 void VulkanRenderer::buffer_bindVertexStrideWorkaroundBuffer(VkBuffer fixedBuffer, uint32 offset, uint32 bufferIndex, uint32 size)
 {
 	cemu_assert_debug(bufferIndex < Latte::GPU_LIMITS::NUM_VERTEX_BUFFERS);
