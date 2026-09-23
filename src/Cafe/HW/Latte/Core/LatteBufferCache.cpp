@@ -7,10 +7,6 @@
 #define CACHE_PAGE_SIZE		0x400
 #define CACHE_PAGE_SIZE_M1	(CACHE_PAGE_SIZE-1)
 
-// Uploading one unchanged page can be cheaper than recording another small
-// transfer. Keep this deliberately narrow to limit extra bandwidth.
-constexpr sint32 MAX_UPLOAD_BRIDGE_PAGES = 1;
-
 uint32 g_currentCacheChronon = 0;
 
 template<typename TRangeType, typename TNodeObject>
@@ -1006,7 +1002,6 @@ public:
 		sint32 numPages = getPageCountFromRangeAligned(rangeBegin, rangeEnd);
 		uint8* pagePtr = memory_getPointerFromPhysicalOffset(rangeBegin);
 		sint32 uploadPageBegin = -1;
-		sint32 uploadPageEnd = -1;
 		CachePageInfo* pageInfo = m_pageInfo.data() + basePageIndex;
 		for (sint32 i = 0; i < numPages; i++)
 		{
@@ -1019,9 +1014,8 @@ public:
 				{
 					// upload range
 					if (uploadData)
-						uploadPages(uploadPageBegin, uploadPageEnd);
+						uploadPages(uploadPageBegin, basePageIndex + i);
 					uploadPageBegin = -1;
-					uploadPageEnd = -1;
 				}
 				// check if hash changed
 				uint64 pageHash = hashPage(pagePtr);
@@ -1048,32 +1042,24 @@ public:
 					performanceMonitor.vk.numBufferCachePagesChangedPerFrame.increment();
 				if (uploadPageBegin == -1)
 					uploadPageBegin = i + basePageIndex;
-				else if ((i + basePageIndex) > uploadPageEnd)
-				{
-					if (uploadData)
-					{
-						performanceMonitor.vk.numBufferCacheBridgedPagesPerFrame.add((i + basePageIndex) - uploadPageEnd);
-						performanceMonitor.vk.numBufferCacheMergedRunsPerFrame.increment();
-					}
-				}
-				uploadPageEnd = i + basePageIndex + 1;
 				pageInfo->hash = pageHash;
 			}
-			else if (uploadPageBegin != -1 && ((i + basePageIndex) - uploadPageEnd) >= MAX_UPLOAD_BRIDGE_PAGES)
+			else
 			{
-				// The unchanged gap is now too large to bridge. Do not include
-				// the trailing unchanged pages in the upload.
-				if (uploadData)
-					uploadPages(uploadPageBegin, uploadPageEnd);
-				uploadPageBegin = -1;
-				uploadPageEnd = -1;
+				if (uploadPageBegin != -1)
+				{
+					// upload range
+					if (uploadData)
+						uploadPages(uploadPageBegin, basePageIndex + i);
+					uploadPageBegin = -1;
+				}
 			}
 			pageInfo++;
 		}
 		if (uploadPageBegin != -1)
 		{
 			if (uploadData)
-				uploadPages(uploadPageBegin, uploadPageEnd);
+				uploadPages(uploadPageBegin, basePageIndex + numPages);
 		}
 	}
 
@@ -1588,12 +1574,44 @@ BufferCacheNode* LatteBufferCache_reserveRange(MPTR physAddress, uint32 size)
 	}
 }
 
-uint32 LatteBufferCache_retrieveDataInCache(MPTR physAddress, uint32 size)
+uint32 LatteBufferCache_retrieveDataInCache(MPTR physAddress, uint32 size, LatteBufferCacheUploadSource uploadSource)
 {
+	const uint32 uploadCallsBefore = performanceMonitor.vk.numBufferCacheInitialUploadsPerFrame.get() +
+		performanceMonitor.vk.numBufferCacheChangedUploadsPerFrame.get() +
+		performanceMonitor.vk.numBufferCacheStreamoutUploadsPerFrame.get();
+	const uint32 uploadBytesBefore = performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.get();
+
 	auto range = LatteBufferCache_reserveRange(physAddress, size);
 	range->flagInUse();
 
 	range->checkAndSyncModificationsIfChrononChanged(physAddress, size);
+
+	const uint32 uploadCallsAfter = performanceMonitor.vk.numBufferCacheInitialUploadsPerFrame.get() +
+		performanceMonitor.vk.numBufferCacheChangedUploadsPerFrame.get() +
+		performanceMonitor.vk.numBufferCacheStreamoutUploadsPerFrame.get();
+	const uint32 uploadBytesAfter = performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.get();
+	const uint32 uploadCalls = uploadCallsAfter - uploadCallsBefore;
+	const uint32 uploadBytes = uploadBytesAfter - uploadBytesBefore;
+
+	switch (uploadSource)
+	{
+	case LatteBufferCacheUploadSource::Vertex:
+		performanceMonitor.vk.numBufferCacheVertexUploadsPerFrame.add(uploadCalls);
+		performanceMonitor.vk.numBufferCacheVertexUploadBytesPerFrame.add(uploadBytes);
+		break;
+	case LatteBufferCacheUploadSource::VertexUniform:
+		performanceMonitor.vk.numBufferCacheVertexUniformUploadsPerFrame.add(uploadCalls);
+		performanceMonitor.vk.numBufferCacheVertexUniformUploadBytesPerFrame.add(uploadBytes);
+		break;
+	case LatteBufferCacheUploadSource::GeometryUniform:
+		performanceMonitor.vk.numBufferCacheGeometryUniformUploadsPerFrame.add(uploadCalls);
+		performanceMonitor.vk.numBufferCacheGeometryUniformUploadBytesPerFrame.add(uploadBytes);
+		break;
+	case LatteBufferCacheUploadSource::PixelUniform:
+		performanceMonitor.vk.numBufferCachePixelUniformUploadsPerFrame.add(uploadCalls);
+		performanceMonitor.vk.numBufferCachePixelUniformUploadBytesPerFrame.add(uploadBytes);
+		break;
+	}
 
 	return range->getBufferOffset(physAddress);
 }
