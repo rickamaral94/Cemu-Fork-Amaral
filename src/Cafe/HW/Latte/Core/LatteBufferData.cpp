@@ -7,8 +7,97 @@
 #include "Cafe/GameProfile/GameProfile.h"
 
 #include "Cafe/HW/Latte/Core/LatteBufferCache.h"
+#include "Cafe/HW/Latte/Core/LattePerformanceMonitor.h"
 #ifdef ENABLE_VULKAN
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
+#endif
+
+#if BOOST_PLAT_ANDROID && defined(ENABLE_VULKAN)
+namespace
+{
+	struct DirectVertexHistoryKey
+	{
+		MPTR address;
+		uint32 size;
+		uint16 stride;
+
+		bool operator==(const DirectVertexHistoryKey&) const = default;
+	};
+
+	struct DirectVertexHistoryKeyHash
+	{
+		size_t operator()(const DirectVertexHistoryKey& key) const
+		{
+			return (static_cast<size_t>(key.address) << 1) ^ (static_cast<size_t>(key.size) << 17) ^ key.stride;
+		}
+	};
+
+	struct DirectVertexHistory
+	{
+		uint64 contentHash{};
+		uint32 lastObservedFrame{};
+		uint32 consecutiveChanges{};
+		bool initialized{};
+	};
+
+	std::unordered_map<DirectVertexHistoryKey, DirectVertexHistory, DirectVertexHistoryKeyHash> s_directVertexHistory;
+	uint32 s_directVertexHistoryGx2Init{};
+
+	uint64 HashDirectVertexData(const uint8* data, uint32 size)
+	{
+		uint64 hash = 14695981039346656037ull;
+		for (uint32 i = 0; i < size; i++)
+		{
+			hash ^= data[i];
+			hash *= 1099511628211ull;
+		}
+		return hash;
+	}
+
+	bool IsFrequentlyChangingVertexBuffer(MPTR address, uint16 stride, const uint8* data, uint32 size)
+	{
+		static constexpr uint32 kMaxTrackedBuffers = 2048;
+		static constexpr uint32 kRequiredConsecutiveChanges = 3;
+
+		if (s_directVertexHistoryGx2Init != LatteGPUState.gx2InitCalled)
+		{
+			s_directVertexHistory.clear();
+			s_directVertexHistoryGx2Init = LatteGPUState.gx2InitCalled;
+		}
+
+		performanceMonitor.vk.numDirectVertexProbesPerFrame.increment();
+		const uint64 contentHash = HashDirectVertexData(data, size);
+		const DirectVertexHistoryKey key{address, size, stride};
+		auto [it, inserted] = s_directVertexHistory.try_emplace(key);
+		if (inserted && s_directVertexHistory.size() > kMaxTrackedBuffers)
+		{
+			s_directVertexHistory.clear();
+			it = s_directVertexHistory.try_emplace(key).first;
+		}
+
+		auto& history = it->second;
+		if (history.initialized && history.lastObservedFrame == LatteGPUState.frameCounter)
+			return history.consecutiveChanges >= kRequiredConsecutiveChanges && history.contentHash == contentHash;
+
+		if (history.initialized && history.contentHash != contentHash)
+		{
+			performanceMonitor.vk.numDirectVertexChangesPerFrame.increment();
+			if (LatteGPUState.frameCounter == history.lastObservedFrame + 1)
+				history.consecutiveChanges++;
+			else
+				history.consecutiveChanges = 1;
+		}
+		else
+		{
+			history.consecutiveChanges = 0;
+		}
+
+		history.contentHash = contentHash;
+		history.lastObservedFrame = LatteGPUState.frameCounter;
+		history.initialized = true;
+		return history.consecutiveChanges >= kRequiredConsecutiveChanges;
+	}
+}
 #endif
 
 template<int vectorLen>
@@ -306,8 +395,13 @@ void LatteBufferCache_Sync(uint32 maxVtxIndex, uint32 baseInstance, uint32 insta
 				}
 			}
 #endif
-			if (g_renderer->buffer_tryBindSmallVertexBuffer(bufferIndex, bufferStride, memory_getPointerFromPhysicalOffset(bufferAddress), fixedBufferSize))
+#if BOOST_PLAT_ANDROID && defined(ENABLE_VULKAN)
+			const uint8* bufferData = memory_getPointerFromPhysicalOffset(bufferAddress);
+			if (fixedBufferSize > 0 && fixedBufferSize <= 4 * 1024 && g_renderer->GetType() == RendererAPI::Vulkan &&
+				IsFrequentlyChangingVertexBuffer(bufferAddress, bufferStride, bufferData, fixedBufferSize) &&
+				g_renderer->buffer_tryBindSmallVertexBuffer(bufferIndex, bufferStride, bufferData, fixedBufferSize))
 				continue;
+#endif
 
 			uint32 bindOffset = LatteBufferCache_retrieveDataInCache(bufferAddress, lookupRangeSize, LatteBufferCacheUploadSource::Vertex);
 			bindBufferArray[bindBufferArraySize].index = bufferIndex;
