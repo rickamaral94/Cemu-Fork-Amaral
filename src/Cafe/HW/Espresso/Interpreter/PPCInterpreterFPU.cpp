@@ -256,6 +256,53 @@ void PPCInterpreter_FCTIWZ(PPCInterpreter_t* hCPU, uint32 Opcode)
 	PPCInterpreter_nextInstruction(hCPU);
 }
 
+uint64 fctiw_espresso(double input, uint32 roundingMode)
+{
+	uint64 value;
+	if (input > (double)0x7FFFFFFF)
+	{
+		value = (uint64)0x7FFFFFFF;
+	}
+	else if (input < -(double)0x80000000)
+	{
+		value = (uint64)0x80000000;
+	}
+	else
+	{
+		double roundedValue;
+		switch (roundingMode & FPSCR_RN_MASK)
+		{
+		case 0: // round to nearest, ties to even
+		{
+			const double lowerValue = floor(input);
+			const double fraction = input - lowerValue;
+			if (fraction < 0.5)
+				roundedValue = lowerValue;
+			else if (fraction > 0.5)
+				roundedValue = lowerValue + 1.0;
+			else
+				roundedValue = (static_cast<sint64>(lowerValue) & 1) == 0 ? lowerValue : lowerValue + 1.0;
+			break;
+		}
+		case 1: // round toward zero
+			roundedValue = trunc(input);
+			break;
+		case 2: // round toward positive infinity
+			roundedValue = ceil(input);
+			break;
+		default: // round toward negative infinity
+			roundedValue = floor(input);
+			break;
+		}
+		value = (uint64)(uint32)(sint32)roundedValue;
+	}
+
+	uint64 result = 0xFFF8000000000000ULL | value;
+	if (value == 0 && ((*(uint64*)&input) >> 63))
+		result |= 0x100000000ULL;
+	return result;
+}
+
 void PPCInterpreter_FCTIW(PPCInterpreter_t* hCPU, uint32 Opcode)
 {
 	FPUCheckAvailable();
@@ -264,30 +311,7 @@ void PPCInterpreter_FCTIW(PPCInterpreter_t* hCPU, uint32 Opcode)
 	PPC_OPC_TEMPL_X(Opcode, frD, frA, frB);
 	PPC_ASSERT(frA==0);
 
-	double b = hCPU->fpr[frB].fpr;
-	uint64 v;
-	if (b > (double)0x7FFFFFFF)
-	{
-		v = (uint64)0x7FFFFFFF;
-	}
-	else if (b < -(double)0x80000000)
-	{
-		v = (uint64)0x80000000;
-	}
-	else
-	{
-		// todo: Support for other rounding modes than NEAR
-		double t = b + 0.5;
-		sint32 i = (sint32)t;
-		if (t - i < 0 || (t - i == 0 && b > 0))
-		{
-			i--;
-		}
-		v = (uint64)i;
-	}
-	hCPU->fpr[frD].guint = 0xFFF8000000000000ULL | v;
-	if (v == 0 && ((*(uint64*)&b) >> 63))
-		hCPU->fpr[frD].guint |= 0x100000000ull;
+	hCPU->fpr[frD].guint = fctiw_espresso(hCPU->fpr[frB].fpr, hCPU->fpscr);
 
 	PPCInterpreter_nextInstruction(hCPU);
 }

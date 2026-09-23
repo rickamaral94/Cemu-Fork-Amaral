@@ -57,6 +57,7 @@
 // FPSCR
 #define FPSCR_VXSNAN	(1<<24)
 #define FPSCR_VXVC		(1<<19)
+#define FPSCR_RN_MASK	0x3
 
 #define MSR_SF			(1<<31)
 #define MSR_UNKNOWN		(1<<30)
@@ -239,6 +240,7 @@ void PPCInterpreter_FMR(PPCInterpreter_t* hCPU, uint32 Opcode);
 void PPCInterpreter_FSEL(PPCInterpreter_t* hCPU, uint32 Opcode);
 void PPCInterpreter_FCTIWZ(PPCInterpreter_t* hCPU, uint32 Opcode);
 void PPCInterpreter_FCTIW(PPCInterpreter_t* hCPU, uint32 Opcode);
+uint64 fctiw_espresso(double input, uint32 roundingMode);
 void PPCInterpreter_FNEG(PPCInterpreter_t* hCPU, uint32 Opcode);
 void PPCInterpreter_FRSP(PPCInterpreter_t* hCPU, uint32 Opcode);
 void PPCInterpreter_FRSQRTE(PPCInterpreter_t* hCPU, uint32 Opcode);
