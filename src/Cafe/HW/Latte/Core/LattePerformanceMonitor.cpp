@@ -122,7 +122,9 @@ void LattePerformanceMonitor_frameEnd()
 		}
 		else
 		{
-			LatteOverlay_updateStats(fps, drawCallCounter / elapsedFrames, fastDrawCallCounter / elapsedFrames);
+			const uint32 drawCallsPerFrame = drawCallCounter / elapsedFrames;
+			const uint32 fastDrawCallsPerFrame = fastDrawCallCounter / elapsedFrames;
+			LatteOverlay_updateStats(fps, drawCallsPerFrame, fastDrawCallsPerFrame);
 			WindowSystem::UpdateWindowTitles(false, false, fps);
 			const uint32 now = GetTickCount();
 			if (now - s_lastTelemetryLog >= kTelemetryLogIntervalMs)
@@ -130,11 +132,27 @@ void LattePerformanceMonitor_frameEnd()
 				s_lastTelemetryLog = now;
 				cemuLog_log(LogType::Force,
 					"Cemu performance telemetry: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} fenceWaitMs={:.3f} asyncWaitMs={:.3f} shaderCreateMs={:.3f}",
-					fps, drawCallCounter / elapsedFrames, fastDrawCallCounter / elapsedFrames,
+					fps, drawCallsPerFrame, fastDrawCallsPerFrame,
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime),
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_fenceTime),
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_waitForAsync),
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_shaderCreate));
+			}
+			if (fps < 28.0)
+			{
+				cemuLog_log(LogType::Force,
+					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} beginRenderPassesLastFrame={}",
+					fps, drawCallsPerFrame, fastDrawCallsPerFrame,
+					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime), rlps, tlps,
+					(performanceMonitor.stats.indexDataUploadPerFrame + 1023) / 1024,
+					performanceMonitor.vk.numGraphicPipelines.get(),
+					performanceMonitor.vk.numDescriptorSets.get(),
+					performanceMonitor.vk.numImages.get(),
+					performanceMonitor.vk.numImageViews.get(),
+					performanceMonitor.vk.numRenderPass.get(),
+					performanceMonitor.vk.numFramebuffer.get(),
+					performanceMonitor.vk.numDrawBarriersPerFrame.get(),
+					performanceMonitor.vk.numBeginRenderpassPerFrame.get());
 			}
 		}
 	}

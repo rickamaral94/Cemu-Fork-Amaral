@@ -25,6 +25,26 @@ private const val BYTES_PER_MEBIBYTE = 1024L * 1024L
 private const val KGSL_BUSY_PATH = "/sys/class/kgsl/kgsl-3d0/gpubusy"
 private const val KGSL_CLOCK_PATH = "/sys/class/kgsl/kgsl-3d0/gpuclk"
 private const val CPU_PATH = "/sys/devices/system/cpu"
+private const val PROCESS_TASK_PATH = "/proc/self/task"
+private const val MAX_LOGGED_THREADS = 6
+
+internal data class ThreadCpuStat(
+    val id: Int,
+    val name: String,
+    val ticks: Long,
+)
+
+internal fun parseProcThreadStat(rawValue: String, name: String): ThreadCpuStat? {
+    val nameEnd = rawValue.lastIndexOf(')')
+    if (nameEnd <= 0 || nameEnd + 2 >= rawValue.length) {
+        return null
+    }
+    val id = rawValue.substringBefore(' ').toIntOrNull() ?: return null
+    val fields = rawValue.substring(nameEnd + 2).trim().split(Regex("\\s+"))
+    val userTicks = fields.getOrNull(11)?.toLongOrNull() ?: return null
+    val systemTicks = fields.getOrNull(12)?.toLongOrNull() ?: return null
+    return ThreadCpuStat(id, name.trim().ifEmpty { "unnamed" }, userTicks + systemTicks)
+}
 
 internal fun calculateProcessCpuPercent(
     cpuTimeDeltaMs: Long,
@@ -58,6 +78,7 @@ internal class PerformanceTelemetryLogger(private val context: Context) {
     private var samplingJob: Job? = null
     private var previousCpuTimeMs = 0L
     private var previousElapsedTimeMs = 0L
+    private var previousThreadTicks = emptyMap<Int, Long>()
     private var sampleCount = 0
     private var cpuPercentSum = 0.0
     private var maxCpuPercent = 0.0
@@ -73,6 +94,7 @@ internal class PerformanceTelemetryLogger(private val context: Context) {
         }
         previousCpuTimeMs = Process.getElapsedCpuTime()
         previousElapsedTimeMs = SystemClock.elapsedRealtime()
+        previousThreadTicks = readThreadCpuStats().associate { it.id to it.ticks }
         NativeLogging.log("Android telemetry: event=start intervalMs=$TELEMETRY_SAMPLE_INTERVAL_MS")
         samplingJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
@@ -111,6 +133,7 @@ internal class PerformanceTelemetryLogger(private val context: Context) {
         )
         previousCpuTimeMs = nowCpuTimeMs
         previousElapsedTimeMs = nowElapsedTimeMs
+        val threadCpu = readThreadCpuPercent(cpuPercent)
 
         val processMemory = activityManager.getProcessMemoryInfo(intArrayOf(Process.myPid())).firstOrNull()
         val pssMiB = processMemory?.totalPss?.toLong()?.div(1024L)
@@ -145,6 +168,7 @@ internal class PerformanceTelemetryLogger(private val context: Context) {
             "Android telemetry: event=sample " +
                     "cpuOneCorePct=${format(cpuPercent)} " +
                     "cpuNormalizedPct=${format(cpuPercent?.div(processorCount))} " +
+                    "topThreads=$threadCpu " +
                     "pssMiB=${pssMiB ?: "unavailable"} " +
                     "privateDirtyMiB=${privateDirtyMiB ?: "unavailable"} " +
                     "graphicsMemoryMiB=${graphicsMemoryMiB ?: "unavailable"} " +
@@ -170,6 +194,38 @@ internal class PerformanceTelemetryLogger(private val context: Context) {
             ?.mapNotNull { cpu -> readLong(cpu.resolve("cpufreq/scaling_cur_freq"))?.div(1000L) }
             .orEmpty()
         return if (clocks.isEmpty()) "unavailable" else clocks.joinToString(",", prefix = "[", postfix = "]")
+    }
+
+    private fun readThreadCpuPercent(processCpuPercent: Double?): String {
+        val currentStats = readThreadCpuStats()
+        val deltas = currentStats.mapNotNull { stat ->
+            val previousTicks = previousThreadTicks[stat.id] ?: return@mapNotNull null
+            val delta = stat.ticks - previousTicks
+            if (delta <= 0) null else stat.name to delta
+        }
+        previousThreadTicks = currentStats.associate { it.id to it.ticks }
+        val totalTicks = deltas.sumOf { it.second }
+        if (processCpuPercent == null || totalTicks <= 0) {
+            return "unavailable"
+        }
+        return deltas.groupBy({ it.first }, { it.second })
+            .mapValues { (_, ticks) -> ticks.sum() }
+            .map { (name, ticks) -> name to processCpuPercent * ticks / totalTicks }
+            .sortedByDescending { it.second }
+            .take(MAX_LOGGED_THREADS)
+            .joinToString(",", prefix = "[", postfix = "]") { (name, percent) ->
+                "${name.replace(',', '_')}:${format(percent)}"
+            }
+    }
+
+    private fun readThreadCpuStats(): List<ThreadCpuStat> {
+        return File(PROCESS_TASK_PATH).listFiles { file -> file.isDirectory }
+            ?.mapNotNull { threadDirectory ->
+                runCatching {
+                    val name = threadDirectory.resolve("comm").readText()
+                    parseProcThreadStat(threadDirectory.resolve("stat").readText(), name)
+                }.getOrNull()
+            }.orEmpty()
     }
 
     private fun readKgslBusy(): Pair<Long, Long>? = runCatching {
