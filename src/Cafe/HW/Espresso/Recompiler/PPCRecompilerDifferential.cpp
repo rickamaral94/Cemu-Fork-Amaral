@@ -2,6 +2,7 @@
 
 #include "BackendAArch64/BackendAArch64.h"
 #include "Cafe/HW/Espresso/PPCState.h"
+#include "Cafe/HW/Espresso/Interpreter/PPCInterpreterInternal.h"
 #include "Cafe/HW/Espresso/Recompiler/PPCFunctionBoundaryTracker.h"
 #include "Cafe/HW/MMU/MMU.h"
 #include "Cafe/OS/RPL/rpl.h"
@@ -155,6 +156,11 @@ constexpr std::array<uint32, 2> kMcrfsFallbackCode{
 	kReturnToInterpreter,
 };
 
+constexpr std::array<uint32, 2> kFctiwFallbackCode{
+	EncodeFloat(63, 2, 0, 1, 14),          // fctiw f2, f1
+	kReturnToInterpreter,
+};
+
 constexpr std::array<uint32, 2> kInvalidationCodeV1{
 	EncodeD(14, 3, 0, 0x1234),          // li r3, 0x1234
 	kReturnToInterpreter,
@@ -185,6 +191,7 @@ static_assert(kSubficMinusOneCode[0] == 0x2083FFFF); // subfic r4, r3, -1
 static_assert(kSthbrxAddressPreservationCode[0] == 0x7CA3272C); // sthbrx r5, r3, r4
 static_assert(kFcmpoFallbackCode[0] == 0xFC011040); // fcmpo cr0, f1, f2
 static_assert(kMcrfsFallbackCode[0] == 0xFC000080); // mcrfs cr0, cr0
+static_assert(kFctiwFallbackCode[0] == 0xFC40081C); // fctiw f2, f1
 static_assert(kConcurrentInvalidationCode[5] == 0x4182FFF8); // beq -8
 
 using StateSetup = void (*)(PPCInterpreter_t&, MPTR);
@@ -585,6 +592,38 @@ bool RunExpectedFallbackCase(const char* name, std::span<const uint32> code, MPT
 	return false;
 }
 
+bool RunFctiwRoundingCase()
+{
+	struct RoundingCase
+	{
+		double input;
+		uint32 roundingMode;
+		uint32 expectedWord;
+	};
+	constexpr std::array<RoundingCase, 12> cases{
+		RoundingCase{2.5, 0, 2}, RoundingCase{3.5, 0, 4}, RoundingCase{-2.5, 0, 0xFFFFFFFE},
+		RoundingCase{2.9, 1, 2}, RoundingCase{-2.9, 1, 0xFFFFFFFE}, RoundingCase{-0.75, 1, 0},
+		RoundingCase{2.1, 2, 3}, RoundingCase{-2.9, 2, 0xFFFFFFFE}, RoundingCase{-0.75, 2, 0},
+		RoundingCase{2.9, 3, 2}, RoundingCase{-2.1, 3, 0xFFFFFFFD}, RoundingCase{-0.75, 3, 0xFFFFFFFF},
+	};
+
+	for (const auto& testCase : cases)
+	{
+		const uint64 result = fctiw_espresso(testCase.input, testCase.roundingMode);
+		if (static_cast<uint32>(result) != testCase.expectedWord)
+		{
+			cemuLog_log(LogType::Force,
+				"JIT ARM64 rounding: result=FAIL mode={} input={} expected={:08x} actual={:08x}",
+				testCase.roundingMode, testCase.input, testCase.expectedWord, static_cast<uint32>(result));
+			return false;
+		}
+	}
+	const bool negativeZeroPreserved = (fctiw_espresso(-0.75, 1) & 0x100000000ULL) != 0;
+	cemuLog_log(LogType::Force, "JIT ARM64 rounding: result={} modes=4 cases={} negativeZeroPreserved={}",
+		negativeZeroPreserved ? "PASS" : "FAIL", cases.size(), negativeZeroPreserved);
+	return negativeZeroPreserved;
+}
+
 bool RunCase(const DifferentialCase& testCase, MPTR codeAddress, MPTR dataAddress)
 {
 	for (size_t i = 0; i < testCase.code.size(); ++i)
@@ -957,8 +996,11 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 	}
 	const bool fcmpoFallback = RunExpectedFallbackCase("fcmpo", kFcmpoFallbackCode, codeAddress);
 	const bool mcrfsFallback = RunExpectedFallbackCase("mcrfs", kMcrfsFallbackCode, codeAddress);
-	cemuLog_log(LogType::Force, "JIT ARM64 fallback: result={} fcmpoRejected={} mcrfsRejected={}",
-		fcmpoFallback && mcrfsFallback ? "PASS" : "FAIL", fcmpoFallback, mcrfsFallback);
+	const bool fctiwFallback = RunExpectedFallbackCase("fctiw", kFctiwFallbackCode, codeAddress);
+	const bool fctiwRounding = RunFctiwRoundingCase();
+	cemuLog_log(LogType::Force, "JIT ARM64 fallback: result={} fcmpoRejected={} mcrfsRejected={} fctiwRejected={} fctiwRounding={}",
+		fcmpoFallback && mcrfsFallback && fctiwFallback && fctiwRounding ? "PASS" : "FAIL",
+		fcmpoFallback, mcrfsFallback, fctiwFallback, fctiwRounding);
 	RunPublishedInvalidationCase(codeAddress);
 	RunConcurrentInvalidationCase(codeAddress, dataAddress);
 	RPLLoader_ReleaseCodeCaveMem(allocation);
