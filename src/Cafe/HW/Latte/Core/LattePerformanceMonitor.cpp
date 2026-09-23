@@ -141,7 +141,7 @@ void LattePerformanceMonitor_frameEnd()
 			if (fps < 28.0)
 			{
 				cemuLog_log(LogType::Force,
-					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={} renderPassReopensSameFboLastFrame={} renderPassEndsLastFrame=[submit:{},present:{},clear:{},textureTransfer:{},bufferTransfer:{},query:{},readback:{},fboTransition:{},other:{}]",
+					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={} renderPassReopensSameFboLastFrame={} bufferCache=[initialUploads:{},changedUploads:{},streamoutUploads:{},uploadKiB:{},pagesChecked:{},pagesChanged:{}] renderPassEndsLastFrame=[submit:{},present:{},clear:{},textureTransfer:{},bufferTransfer:{},query:{},readback:{},fboTransition:{},other:{}]",
 					fps, drawCallsPerFrame, fastDrawCallsPerFrame,
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime), rlps, tlps,
 					(performanceMonitor.stats.indexDataUploadPerFrame + 1023) / 1024,
@@ -159,6 +159,12 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numRenderPassFboChangesPerFrame.get(),
 					performanceMonitor.vk.numRenderPassSelfDependencySplitsPerFrame.get(),
 					performanceMonitor.vk.numRenderPassReopensSameFboPerFrame.get(),
+					performanceMonitor.vk.numBufferCacheInitialUploadsPerFrame.get(),
+					performanceMonitor.vk.numBufferCacheChangedUploadsPerFrame.get(),
+					performanceMonitor.vk.numBufferCacheStreamoutUploadsPerFrame.get(),
+					(performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.get() + 1023) / 1024,
+					performanceMonitor.vk.numBufferCachePagesCheckedPerFrame.get(),
+					performanceMonitor.vk.numBufferCachePagesChangedPerFrame.get(),
 					performanceMonitor.vk.numRenderPassEndsSubmitPerFrame.get(),
 					performanceMonitor.vk.numRenderPassEndsPresentationPerFrame.get(),
 					performanceMonitor.vk.numRenderPassEndsClearPerFrame.get(),
@@ -192,4 +198,10 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.vk.numRenderPassEndsReadbackPerFrame.reset();
 	performanceMonitor.vk.numRenderPassEndsFboTransitionPerFrame.reset();
 	performanceMonitor.vk.numRenderPassEndsOtherPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheInitialUploadsPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheChangedUploadsPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheStreamoutUploadsPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.reset();
+	performanceMonitor.vk.numBufferCachePagesCheckedPerFrame.reset();
+	performanceMonitor.vk.numBufferCachePagesChangedPerFrame.reset();
 }
