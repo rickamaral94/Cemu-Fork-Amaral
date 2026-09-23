@@ -383,6 +383,7 @@ private:
 
 		// renderpass
 		CachedFBOVk* activeRenderpassFBO{}; // the FBO of the currently active Vulkan renderpass
+		CachedFBOVk* lastRenderpassFBO{}; // telemetry only; never dereferenced
 
 		// drawcall state
 		PipelineInfo* activePipelineInfo{ nullptr };
@@ -552,8 +553,21 @@ private:
 	void draw_updateVkBlendConstants();
 	void draw_updateDepthBias(bool forceUpdate);
 
+	enum class RenderPassEndReason : uint32
+	{
+		Submit,
+		Presentation,
+		Clear,
+		TextureTransfer,
+		BufferTransfer,
+		Query,
+		Readback,
+		FboTransition,
+		Other,
+	};
+
 	void draw_setRenderPass();
-	void draw_endRenderPass();
+	void draw_endRenderPass(RenderPassEndReason reason);
 
 	void draw_beginSequence() override;
 	void draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 instanceCount, uint32 count, MPTR indexDataMPTR, Latte::LATTE_VGT_DMA_INDEX_TYPE::E_INDEX_TYPE indexType, const LatteDrawcallContext& drawcallContext) override;
