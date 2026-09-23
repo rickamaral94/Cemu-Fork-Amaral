@@ -75,3 +75,41 @@ minutos. A revisão só avança se:
 
 Risco principal: custo adicional do hash FNV-1a nos candidatos pequenos. A
 telemetria de `probes`, `changes` e CPU permitirá medir esse custo no aparelho.
+
+## Resultado do classificador preventivo
+
+A build `c1f03f17-nightly` foi testada no mesmo aparelho, driver e cenário por
+mais de seis minutos. Em 366 amostras estáveis, o classificador examinou uma
+mediana de 1.525 candidatos e encontrou 254 mudanças por quadro, mas não
+promoveu nenhum buffer porque os mesmos endereços não mudavam em quadros
+consecutivos.
+
+| Métrica | Baseline | Classificador preventivo |
+|---|---:|---:|
+| FPS mediano | 20,03 | 19,88 |
+| CPU de renderização | 40,05 ms | 41,89 ms |
+| `bufferTransfer` | 270 | 259 |
+| Reaberturas do mesmo FBO | 275 | 266 |
+| Vertex direto | 0 | 0 |
+
+O custo dos hashes preventivos sem nenhuma promoção torna essa revisão também
+rejeitada. O salto de PSS de aproximadamente 1.035 para 1.742 MiB repetiu-se
+mesmo sem uploads diretos, removendo o ring buffer direto como causa específica
+desse comportamento.
+
+## Classificador orientado pelo cache
+
+A terceira revisão não calcula hashes preventivos. O cache informa ao chamador
+se uma consulta realmente provocou upload. Cada combinação de endereço,
+tamanho e stride é promovida depois de três uploads reais dentro de uma janela
+de 120 quadros, sem exigir quadros consecutivos.
+
+Somente buffers promovidos recebem hash adicional. Enquanto o conteúdo muda,
+eles usam o ring buffer direto. Conteúdo estável rebaixa o buffer imediatamente
+e o devolve ao cache; quando necessário, o primeiro upload que apenas atualiza
+uma cópia do cache deixada para trás pelo caminho direto não conta como nova
+evidência de dinamismo.
+
+O diagnóstico passa a registrar `promotions` e `demotions` junto de `probes` e
+`changes`. Nesta revisão, `probes` significa apenas verificações de buffers já
+promovidos, e não todos os candidatos elegíveis.

@@ -11,7 +11,7 @@ enum class LatteBufferCacheUploadSource
 	PixelUniform,
 };
 
-uint32 LatteBufferCache_retrieveDataInCache(MPTR physAddress, uint32 size, LatteBufferCacheUploadSource uploadSource);
+uint32 LatteBufferCache_retrieveDataInCache(MPTR physAddress, uint32 size, LatteBufferCacheUploadSource uploadSource, bool* didUpload = nullptr);
 void LatteBufferCache_copyStreamoutDataToCache(MPTR physAddress, uint32 size, uint32 streamoutBufferOffset);
 void LatteBufferCache_invalidate(MPTR physAddress, uint32 size);
 

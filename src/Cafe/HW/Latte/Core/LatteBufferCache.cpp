@@ -1575,7 +1575,7 @@ BufferCacheNode* LatteBufferCache_reserveRange(MPTR physAddress, uint32 size)
 	}
 }
 
-uint32 LatteBufferCache_retrieveDataInCache(MPTR physAddress, uint32 size, LatteBufferCacheUploadSource uploadSource)
+uint32 LatteBufferCache_retrieveDataInCache(MPTR physAddress, uint32 size, LatteBufferCacheUploadSource uploadSource, bool* didUpload)
 {
 	const uint32 uploadCallsBefore = performanceMonitor.vk.numBufferCacheInitialUploadsPerFrame.get() +
 		performanceMonitor.vk.numBufferCacheChangedUploadsPerFrame.get() +
@@ -1593,6 +1593,8 @@ uint32 LatteBufferCache_retrieveDataInCache(MPTR physAddress, uint32 size, Latte
 	const uint32 uploadBytesAfter = performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.get();
 	const uint32 uploadCalls = uploadCallsAfter - uploadCallsBefore;
 	const uint32 uploadBytes = uploadBytesAfter - uploadBytesBefore;
+	if (didUpload)
+		*didUpload = uploadCalls != 0;
 
 	switch (uploadSource)
 	{

@@ -35,9 +35,12 @@ namespace
 	struct DirectVertexHistory
 	{
 		uint64 contentHash{};
-		uint32 lastObservedFrame{};
-		uint32 consecutiveChanges{};
-		bool initialized{};
+		uint32 lastUploadFrame{};
+		uint32 lastDirectFrame{};
+		uint32 recentUploads{};
+		bool promoted{};
+		bool directSinceCache{};
+		bool ignoreNextCacheUpload{};
 	};
 
 	std::unordered_map<DirectVertexHistoryKey, DirectVertexHistory, DirectVertexHistoryKeyHash> s_directVertexHistory;
@@ -54,20 +57,56 @@ namespace
 		return hash;
 	}
 
-	bool IsFrequentlyChangingVertexBuffer(MPTR address, uint16 stride, const uint8* data, uint32 size)
+	DirectVertexHistory* FindDirectVertexHistory(const DirectVertexHistoryKey& key)
 	{
-		static constexpr uint32 kMaxTrackedBuffers = 2048;
-		static constexpr uint32 kRequiredConsecutiveChanges = 3;
-
 		if (s_directVertexHistoryGx2Init != LatteGPUState.gx2InitCalled)
 		{
 			s_directVertexHistory.clear();
 			s_directVertexHistoryGx2Init = LatteGPUState.gx2InitCalled;
 		}
+		auto it = s_directVertexHistory.find(key);
+		return it != s_directVertexHistory.end() ? &it->second : nullptr;
+	}
 
+	bool ShouldBindVertexBufferDirectly(const DirectVertexHistoryKey& key, const uint8* data)
+	{
+		auto* history = FindDirectVertexHistory(key);
+		if (!history || !history->promoted)
+			return false;
 		performanceMonitor.vk.numDirectVertexProbesPerFrame.increment();
-		const uint64 contentHash = HashDirectVertexData(data, size);
-		const DirectVertexHistoryKey key{address, size, stride};
+		const uint64 contentHash = HashDirectVertexData(data, key.size);
+		if (history->contentHash == contentHash)
+		{
+			if (history->directSinceCache && history->lastDirectFrame == LatteGPUState.frameCounter)
+				return true;
+			history->promoted = false;
+			history->recentUploads = 0;
+			history->ignoreNextCacheUpload = history->directSinceCache;
+			performanceMonitor.vk.numDirectVertexDemotionsPerFrame.increment();
+			return false;
+		}
+		history->contentHash = contentHash;
+		performanceMonitor.vk.numDirectVertexChangesPerFrame.increment();
+		return true;
+	}
+
+	void RecordDirectVertexBinding(const DirectVertexHistoryKey& key)
+	{
+		auto* history = FindDirectVertexHistory(key);
+		cemu_assert_debug(history && history->promoted);
+		if (history)
+		{
+			history->directSinceCache = true;
+			history->lastDirectFrame = LatteGPUState.frameCounter;
+		}
+	}
+
+	void RecordVertexCacheResult(const DirectVertexHistoryKey& key, const uint8* data, bool didUpload)
+	{
+		static constexpr uint32 kMaxTrackedBuffers = 2048;
+		static constexpr uint32 kRequiredRecentUploads = 3;
+		static constexpr uint32 kUploadHistoryMaxAgeFrames = 120;
+
 		auto [it, inserted] = s_directVertexHistory.try_emplace(key);
 		if (inserted && s_directVertexHistory.size() > kMaxTrackedBuffers)
 		{
@@ -76,26 +115,30 @@ namespace
 		}
 
 		auto& history = it->second;
-		if (history.initialized && history.lastObservedFrame == LatteGPUState.frameCounter)
-			return history.consecutiveChanges >= kRequiredConsecutiveChanges && history.contentHash == contentHash;
-
-		if (history.initialized && history.contentHash != contentHash)
+		history.directSinceCache = false;
+		if (history.ignoreNextCacheUpload)
 		{
-			performanceMonitor.vk.numDirectVertexChangesPerFrame.increment();
-			if (LatteGPUState.frameCounter == history.lastObservedFrame + 1)
-				history.consecutiveChanges++;
-			else
-				history.consecutiveChanges = 1;
+			history.ignoreNextCacheUpload = false;
+			return;
 		}
+		if (!didUpload)
+		{
+			history.recentUploads = 0;
+			return;
+		}
+		if (history.lastUploadFrame == LatteGPUState.frameCounter)
+			return;
+		if (LatteGPUState.frameCounter - history.lastUploadFrame <= kUploadHistoryMaxAgeFrames)
+			history.recentUploads++;
 		else
+			history.recentUploads = 1;
+		history.lastUploadFrame = LatteGPUState.frameCounter;
+		if (history.recentUploads >= kRequiredRecentUploads && !history.promoted)
 		{
-			history.consecutiveChanges = 0;
+			history.contentHash = HashDirectVertexData(data, key.size);
+			history.promoted = true;
+			performanceMonitor.vk.numDirectVertexPromotionsPerFrame.increment();
 		}
-
-		history.contentHash = contentHash;
-		history.lastObservedFrame = LatteGPUState.frameCounter;
-		history.initialized = true;
-		return history.consecutiveChanges >= kRequiredConsecutiveChanges;
 	}
 }
 #endif
@@ -397,13 +440,22 @@ void LatteBufferCache_Sync(uint32 maxVtxIndex, uint32 baseInstance, uint32 insta
 #endif
 #if BOOST_PLAT_ANDROID && defined(ENABLE_VULKAN)
 			const uint8* bufferData = memory_getPointerFromPhysicalOffset(bufferAddress);
+			const DirectVertexHistoryKey directVertexKey{bufferAddress, fixedBufferSize, bufferStride};
 			if (fixedBufferSize > 0 && fixedBufferSize <= 4 * 1024 && g_renderer->GetType() == RendererAPI::Vulkan &&
-				IsFrequentlyChangingVertexBuffer(bufferAddress, bufferStride, bufferData, fixedBufferSize) &&
+				ShouldBindVertexBufferDirectly(directVertexKey, bufferData) &&
 				g_renderer->buffer_tryBindSmallVertexBuffer(bufferIndex, bufferStride, bufferData, fixedBufferSize))
+			{
+				RecordDirectVertexBinding(directVertexKey);
 				continue;
+			}
 #endif
 
-			uint32 bindOffset = LatteBufferCache_retrieveDataInCache(bufferAddress, lookupRangeSize, LatteBufferCacheUploadSource::Vertex);
+			bool didUpload = false;
+			uint32 bindOffset = LatteBufferCache_retrieveDataInCache(bufferAddress, lookupRangeSize, LatteBufferCacheUploadSource::Vertex, &didUpload);
+#if BOOST_PLAT_ANDROID && defined(ENABLE_VULKAN)
+			if (fixedBufferSize > 0 && fixedBufferSize <= 4 * 1024 && g_renderer->GetType() == RendererAPI::Vulkan)
+				RecordVertexCacheResult(directVertexKey, bufferData, didUpload);
+#endif
 			bindBufferArray[bindBufferArraySize].index = bufferIndex;
 			bindBufferArray[bindBufferArraySize].bindOffset = bindOffset;
 			bindBufferArray[bindBufferArraySize].bindSize = fixedBufferSize;
