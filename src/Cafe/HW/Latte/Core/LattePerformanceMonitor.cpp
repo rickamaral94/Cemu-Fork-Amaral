@@ -1,8 +1,20 @@
 #include "Cafe/HW/Latte/Core/LattePerformanceMonitor.h"
 #include "Cafe/HW/Latte/Core/LatteOverlay.h"
 #include "WindowSystem.h"
+#include "Cemu/Logging/CemuLogging.h"
 
 performanceMonitor_t performanceMonitor{};
+
+namespace
+{
+constexpr uint32 kTelemetryLogIntervalMs = 2000;
+uint32 s_lastTelemetryLog = 0;
+
+double TimerValueToMilliseconds(LattePerfStatTimer& timer)
+{
+	return static_cast<double>(PPCTimer_tscToMicroseconds(timer.getPreviousFrameValue())) / 1000.0;
+}
+}
 
 void LattePerformanceMonitor_frameEnd()
 {
@@ -112,6 +124,18 @@ void LattePerformanceMonitor_frameEnd()
 		{
 			LatteOverlay_updateStats(fps, drawCallCounter / elapsedFrames, fastDrawCallCounter / elapsedFrames);
 			WindowSystem::UpdateWindowTitles(false, false, fps);
+			const uint32 now = GetTickCount();
+			if (now - s_lastTelemetryLog >= kTelemetryLogIntervalMs)
+			{
+				s_lastTelemetryLog = now;
+				cemuLog_log(LogType::Force,
+					"Cemu performance telemetry: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} fenceWaitMs={:.3f} asyncWaitMs={:.3f} shaderCreateMs={:.3f}",
+					fps, drawCallCounter / elapsedFrames, fastDrawCallCounter / elapsedFrames,
+					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime),
+					TimerValueToMilliseconds(performanceMonitor.gpuTime_fenceTime),
+					TimerValueToMilliseconds(performanceMonitor.gpuTime_waitForAsync),
+					TimerValueToMilliseconds(performanceMonitor.gpuTime_shaderCreate));
+			}
 		}
 	}
 }
