@@ -113,3 +113,27 @@ evidência de dinamismo.
 O diagnóstico passa a registrar `promotions` e `demotions` junto de `probes` e
 `changes`. Nesta revisão, `probes` significa apenas verificações de buffers já
 promovidos, e não todos os candidatos elegíveis.
+
+## Diagnóstico dos uploads residuais
+
+Uma sessão de 11 minutos na Ilha Taura, com Link parado na área de visão ampla
+da vila, reproduziu uma queda persistente para aproximadamente 20 FPS. A cena
+mantém cerca de 7.600 draws por quadro, 88 a 108 encerramentos de render pass
+por transferência de buffer e 94 a 113 reaberturas do mesmo FBO. O caminho
+direto usa somente 29 a 37 KiB e 154 a 204 chamadas por quadro, portanto não
+atinge seus limites de 512 KiB ou 512 chamadas.
+
+Antes de ampliar a otimização, a telemetria passa a classificar o trabalho que
+permanece no cache em `directVertexEligibility`:
+
+- `smallRequests`: consultas de vertex buffers elegíveis de até 4 KiB;
+- `historyMisses`: chaves de endereço, tamanho e stride vistas pela primeira vez;
+- `cacheHits`: consultas que não exigiram upload;
+- `learningUploads`: uploads em quadros distintos usados pelo classificador;
+- `sameFrameUploads`: uploads repetidos da mesma chave no mesmo quadro;
+- `ringRejects`: buffers promovidos que não couberam no ring buffer;
+- `oversizedUploads` e `oversizedKiB`: consultas acima de 4 KiB que fizeram upload;
+- `historyResets`: limpezas ao atingir o limite de 2.048 entradas.
+
+Esta etapa é somente diagnóstica e não muda limites, promoção, hashing,
+sincronização Vulkan nem o fallback para o buffer cache.

@@ -107,10 +107,14 @@ namespace
 		static constexpr uint32 kRequiredRecentUploads = 3;
 		static constexpr uint32 kUploadHistoryMaxAgeFrames = 120;
 
+		performanceMonitor.vk.numDirectVertexSmallRequestsPerFrame.increment();
 		auto [it, inserted] = s_directVertexHistory.try_emplace(key);
+		if (inserted)
+			performanceMonitor.vk.numDirectVertexHistoryMissesPerFrame.increment();
 		if (inserted && s_directVertexHistory.size() > kMaxTrackedBuffers)
 		{
 			s_directVertexHistory.clear();
+			performanceMonitor.vk.numDirectVertexHistoryResetsPerFrame.increment();
 			it = s_directVertexHistory.try_emplace(key).first;
 		}
 
@@ -123,11 +127,16 @@ namespace
 		}
 		if (!didUpload)
 		{
+			performanceMonitor.vk.numDirectVertexCacheHitsPerFrame.increment();
 			history.recentUploads = 0;
 			return;
 		}
 		if (history.lastUploadFrame == LatteGPUState.frameCounter)
+		{
+			performanceMonitor.vk.numDirectVertexSameFrameUploadsPerFrame.increment();
 			return;
+		}
+		performanceMonitor.vk.numDirectVertexLearningUploadsPerFrame.increment();
 		if (LatteGPUState.frameCounter - history.lastUploadFrame <= kUploadHistoryMaxAgeFrames)
 			history.recentUploads++;
 		else
@@ -441,20 +450,28 @@ void LatteBufferCache_Sync(uint32 maxVtxIndex, uint32 baseInstance, uint32 insta
 #if BOOST_PLAT_ANDROID && defined(ENABLE_VULKAN)
 			const uint8* bufferData = memory_getPointerFromPhysicalOffset(bufferAddress);
 			const DirectVertexHistoryKey directVertexKey{bufferAddress, fixedBufferSize, static_cast<uint16>(bufferStride)};
-			if (fixedBufferSize > 0 && fixedBufferSize <= 4 * 1024 && g_renderer->GetType() == RendererAPI::Vulkan &&
-				ShouldBindVertexBufferDirectly(directVertexKey, bufferData) &&
-				g_renderer->buffer_tryBindSmallVertexBuffer(bufferIndex, bufferStride, bufferData, fixedBufferSize))
+			const bool isDirectVertexEligible = fixedBufferSize > 0 && fixedBufferSize <= 4 * 1024 &&
+				g_renderer->GetType() == RendererAPI::Vulkan;
+			const bool wantsDirectVertex = isDirectVertexEligible && ShouldBindVertexBufferDirectly(directVertexKey, bufferData);
+			if (wantsDirectVertex && g_renderer->buffer_tryBindSmallVertexBuffer(bufferIndex, bufferStride, bufferData, fixedBufferSize))
 			{
 				RecordDirectVertexBinding(directVertexKey);
 				continue;
 			}
+			if (wantsDirectVertex)
+				performanceMonitor.vk.numDirectVertexRingRejectsPerFrame.increment();
 #endif
 
 			bool didUpload = false;
 			uint32 bindOffset = LatteBufferCache_retrieveDataInCache(bufferAddress, lookupRangeSize, LatteBufferCacheUploadSource::Vertex, &didUpload);
 #if BOOST_PLAT_ANDROID && defined(ENABLE_VULKAN)
-			if (fixedBufferSize > 0 && fixedBufferSize <= 4 * 1024 && g_renderer->GetType() == RendererAPI::Vulkan)
+			if (isDirectVertexEligible)
 				RecordVertexCacheResult(directVertexKey, bufferData, didUpload);
+			else if (didUpload && fixedBufferSize > 4 * 1024 && g_renderer->GetType() == RendererAPI::Vulkan)
+			{
+				performanceMonitor.vk.numDirectVertexOversizedUploadsPerFrame.increment();
+				performanceMonitor.vk.numDirectVertexOversizedUploadBytesPerFrame.add(fixedBufferSize);
+			}
 #endif
 			bindBufferArray[bindBufferArraySize].index = bufferIndex;
 			bindBufferArray[bindBufferArraySize].bindOffset = bindOffset;

@@ -141,7 +141,7 @@ void LattePerformanceMonitor_frameEnd()
 			if (fps < 28.0)
 			{
 				cemuLog_log(LogType::Force,
-					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={} renderPassReopensSameFboLastFrame={} bufferCache=[initialUploads:{},changedUploads:{},streamoutUploads:{},uploadKiB:{},pagesChecked:{},pagesChanged:{}] uploadSources=[vertex:{}/{},vsUniform:{}/{},gsUniform:{}/{},psUniform:{}/{},directVertex:{}/{}] directVertexClassifier=[probes:{},changes:{},promotions:{},demotions:{}] renderPassEndsLastFrame=[submit:{},present:{},clear:{},textureTransfer:{},bufferTransfer:{},query:{},readback:{},fboTransition:{},other:{}]",
+					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={} renderPassReopensSameFboLastFrame={} bufferCache=[initialUploads:{},changedUploads:{},streamoutUploads:{},uploadKiB:{},pagesChecked:{},pagesChanged:{}] uploadSources=[vertex:{}/{},vsUniform:{}/{},gsUniform:{}/{},psUniform:{}/{},directVertex:{}/{}] directVertexClassifier=[probes:{},changes:{},promotions:{},demotions:{}] directVertexEligibility=[smallRequests:{},historyMisses:{},cacheHits:{},learningUploads:{},sameFrameUploads:{},ringRejects:{},oversizedUploads:{},oversizedKiB:{},historyResets:{}] renderPassEndsLastFrame=[submit:{},present:{},clear:{},textureTransfer:{},bufferTransfer:{},query:{},readback:{},fboTransition:{},other:{}]",
 					fps, drawCallsPerFrame, fastDrawCallsPerFrame,
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime), rlps, tlps,
 					(performanceMonitor.stats.indexDataUploadPerFrame + 1023) / 1024,
@@ -179,6 +179,15 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numDirectVertexChangesPerFrame.get(),
 					performanceMonitor.vk.numDirectVertexPromotionsPerFrame.get(),
 					performanceMonitor.vk.numDirectVertexDemotionsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexSmallRequestsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexHistoryMissesPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexCacheHitsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexLearningUploadsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexSameFrameUploadsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexRingRejectsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexOversizedUploadsPerFrame.get(),
+					(performanceMonitor.vk.numDirectVertexOversizedUploadBytesPerFrame.get() + 1023) / 1024,
+					performanceMonitor.vk.numDirectVertexHistoryResetsPerFrame.get(),
 					performanceMonitor.vk.numRenderPassEndsSubmitPerFrame.get(),
 					performanceMonitor.vk.numRenderPassEndsPresentationPerFrame.get(),
 					performanceMonitor.vk.numRenderPassEndsClearPerFrame.get(),
@@ -232,4 +241,13 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.vk.numDirectVertexChangesPerFrame.reset();
 	performanceMonitor.vk.numDirectVertexPromotionsPerFrame.reset();
 	performanceMonitor.vk.numDirectVertexDemotionsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexSmallRequestsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexHistoryMissesPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexCacheHitsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexLearningUploadsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexSameFrameUploadsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexRingRejectsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexOversizedUploadsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexOversizedUploadBytesPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexHistoryResetsPerFrame.reset();
 }
