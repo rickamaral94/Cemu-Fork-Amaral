@@ -141,7 +141,7 @@ void LattePerformanceMonitor_frameEnd()
 			if (fps < 28.0)
 			{
 				cemuLog_log(LogType::Force,
-					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={}",
+					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={} renderPassReopensSameFboLastFrame={} renderPassEndsLastFrame=[submit:{},present:{},clear:{},textureTransfer:{},bufferTransfer:{},query:{},readback:{},fboTransition:{},other:{}]",
 					fps, drawCallsPerFrame, fastDrawCallsPerFrame,
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime), rlps, tlps,
 					(performanceMonitor.stats.indexDataUploadPerFrame + 1023) / 1024,
@@ -157,7 +157,17 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numSkippedColorFeedbackBarriersPerFrame.get(),
 					performanceMonitor.vk.numBeginRenderpassPerFrame.get(),
 					performanceMonitor.vk.numRenderPassFboChangesPerFrame.get(),
-					performanceMonitor.vk.numRenderPassSelfDependencySplitsPerFrame.get());
+					performanceMonitor.vk.numRenderPassSelfDependencySplitsPerFrame.get(),
+					performanceMonitor.vk.numRenderPassReopensSameFboPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsSubmitPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsPresentationPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsClearPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsTextureTransferPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsBufferTransferPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsQueryPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsReadbackPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsFboTransitionPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsOtherPerFrame.get());
 			}
 		}
 	}
@@ -172,4 +182,14 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.vk.numBeginRenderpassPerFrame.reset();
 	performanceMonitor.vk.numRenderPassFboChangesPerFrame.reset();
 	performanceMonitor.vk.numRenderPassSelfDependencySplitsPerFrame.reset();
+	performanceMonitor.vk.numRenderPassReopensSameFboPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsSubmitPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsPresentationPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsClearPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsTextureTransferPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsBufferTransferPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsQueryPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsReadbackPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsFboTransitionPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsOtherPerFrame.reset();
 }
