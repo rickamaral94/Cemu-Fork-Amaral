@@ -440,7 +440,7 @@ void LatteBufferCache_Sync(uint32 maxVtxIndex, uint32 baseInstance, uint32 insta
 #endif
 #if BOOST_PLAT_ANDROID && defined(ENABLE_VULKAN)
 			const uint8* bufferData = memory_getPointerFromPhysicalOffset(bufferAddress);
-			const DirectVertexHistoryKey directVertexKey{bufferAddress, fixedBufferSize, bufferStride};
+			const DirectVertexHistoryKey directVertexKey{bufferAddress, fixedBufferSize, static_cast<uint16>(bufferStride)};
 			if (fixedBufferSize > 0 && fixedBufferSize <= 4 * 1024 && g_renderer->GetType() == RendererAPI::Vulkan &&
 				ShouldBindVertexBufferDirectly(directVertexKey, bufferData) &&
 				g_renderer->buffer_tryBindSmallVertexBuffer(bufferIndex, bufferStride, bufferData, fixedBufferSize))
