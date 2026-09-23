@@ -1,4 +1,5 @@
 #include "Cafe/HW/Latte/Renderer/Renderer.h"
+#include "Cafe/HW/Latte/Core/LattePerformanceMonitor.h"
 #include "util/ChunkedHeap/ChunkedHeap.h"
 #include "util/helpers/fspinlock.h"
 #include "config/ActiveSettings.h"
@@ -1004,6 +1005,8 @@ public:
 		CachePageInfo* pageInfo = m_pageInfo.data() + basePageIndex;
 		for (sint32 i = 0; i < numPages; i++)
 		{
+			if (uploadData)
+				performanceMonitor.vk.numBufferCachePagesCheckedPerFrame.increment();
 			if (pageInfo->hasStreamoutData)
 			{
 				// first upload any pending sequence of pages
@@ -1018,6 +1021,8 @@ public:
 				uint64 pageHash = hashPage(pagePtr);
 				if (pageInfo->hash != pageHash)
 				{
+					if (uploadData)
+						performanceMonitor.vk.numBufferCachePagesChangedPerFrame.increment();
 					pageInfo->hash = pageHash;
 					// for pages that contain streamout data we do uploads with a much smaller granularity
 					// and skip uploading any data that is marked with streamout filler bytes
@@ -1033,6 +1038,8 @@ public:
 			pagePtr += CACHE_PAGE_SIZE;
 			if (pageInfo->hash != pageHash)
 			{
+				if (uploadData)
+					performanceMonitor.vk.numBufferCachePagesChangedPerFrame.increment();
 				if (uploadPageBegin == -1)
 					uploadPageBegin = i + basePageIndex;
 				pageInfo->hash = pageHash;
@@ -1231,6 +1238,8 @@ private:
 		checkAndSyncModifications(rangeBegin, rangeEnd, false);
 
 		g_renderer->bufferCache_upload(memory_getPointerFromPhysicalOffset(rangeBegin), rangeEnd - rangeBegin, getBufferOffset(rangeBegin));
+		performanceMonitor.vk.numBufferCacheInitialUploadsPerFrame.increment();
+		performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.add(rangeEnd - rangeBegin);
 	}
 
 	void syncFromNode(BufferCacheNode* srcNode)
@@ -1269,6 +1278,8 @@ private:
 			m_pageInfo[firstPage + i].hash = hashPage(s_pageUploadBuffer.data() + i * CACHE_PAGE_SIZE);
 		}
 		g_renderer->bufferCache_upload(s_pageUploadBuffer.data(), uploadRangeEnd - uploadRangeBegin, getBufferOffset(uploadRangeBegin));
+		performanceMonitor.vk.numBufferCacheChangedUploadsPerFrame.increment();
+		performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.add(uploadRangeEnd - uploadRangeBegin);
 	}
 
 	// upload only non-streamout data of a single page
@@ -1296,6 +1307,8 @@ private:
 					uint32 uploadRelRangeEnd = i * 16;
 					cemu_assert_debug(uploadRelRangeEnd > uploadRelRangeBegin);
 					g_renderer->bufferCache_upload(pageCopy + uploadRelRangeBegin, uploadRelRangeEnd - uploadRelRangeBegin, getBufferOffset(pageBase + uploadRelRangeBegin));
+					performanceMonitor.vk.numBufferCacheStreamoutUploadsPerFrame.increment();
+					performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.add(uploadRelRangeEnd - uploadRelRangeBegin);
 					blockBegin = -1;
 				}
 				pagePtrU64 += 2;
@@ -1311,6 +1324,8 @@ private:
 			uint32 uploadRelRangeEnd = CACHE_PAGE_SIZE;
 			cemu_assert_debug(uploadRelRangeEnd > uploadRelRangeBegin);
 			g_renderer->bufferCache_upload(pageCopy + uploadRelRangeBegin, uploadRelRangeEnd - uploadRelRangeBegin, getBufferOffset(pageBase + uploadRelRangeBegin));
+			performanceMonitor.vk.numBufferCacheStreamoutUploadsPerFrame.increment();
+			performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.add(uploadRelRangeEnd - uploadRelRangeBegin);
 			blockBegin = -1;
 		}
 		return hasStreamoutBlocks;
