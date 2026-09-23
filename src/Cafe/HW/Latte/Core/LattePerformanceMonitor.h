@@ -136,6 +136,16 @@ typedef struct
 		LattePerfStatCounter numBeginRenderpassPerFrame;
 		LattePerfStatCounter numRenderPassFboChangesPerFrame;
 		LattePerfStatCounter numRenderPassSelfDependencySplitsPerFrame;
+		LattePerfStatCounter numRenderPassReopensSameFboPerFrame;
+		LattePerfStatCounter numRenderPassEndsSubmitPerFrame;
+		LattePerfStatCounter numRenderPassEndsPresentationPerFrame;
+		LattePerfStatCounter numRenderPassEndsClearPerFrame;
+		LattePerfStatCounter numRenderPassEndsTextureTransferPerFrame;
+		LattePerfStatCounter numRenderPassEndsBufferTransferPerFrame;
+		LattePerfStatCounter numRenderPassEndsQueryPerFrame;
+		LattePerfStatCounter numRenderPassEndsReadbackPerFrame;
+		LattePerfStatCounter numRenderPassEndsFboTransitionPerFrame;
+		LattePerfStatCounter numRenderPassEndsOtherPerFrame;
 	}vk;
 
 	// calculated stats (per frame)
