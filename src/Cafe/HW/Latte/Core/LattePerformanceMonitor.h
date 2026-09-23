@@ -157,8 +157,14 @@ typedef struct
 		LattePerfStatCounter numBufferCacheUploadBytesPerFrame;
 		LattePerfStatCounter numBufferCachePagesCheckedPerFrame;
 		LattePerfStatCounter numBufferCachePagesChangedPerFrame;
-		LattePerfStatCounter numBufferCacheBridgedPagesPerFrame;
-		LattePerfStatCounter numBufferCacheMergedRunsPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUniformUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUniformUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCacheGeometryUniformUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheGeometryUniformUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCachePixelUniformUploadsPerFrame;
+		LattePerfStatCounter numBufferCachePixelUniformUploadBytesPerFrame;
 	}vk;
 
 	// calculated stats (per frame)
