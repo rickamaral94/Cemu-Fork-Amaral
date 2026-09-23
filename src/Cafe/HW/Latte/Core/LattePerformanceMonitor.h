@@ -130,7 +130,12 @@ typedef struct
 
 		// per frame
 		LattePerfStatCounter numDrawBarriersPerFrame;
+		LattePerfStatCounter numInputTextureBarriersPerFrame;
+		LattePerfStatCounter numRenderPassLoadBarriersPerFrame;
+		LattePerfStatCounter numSkippedColorFeedbackBarriersPerFrame;
 		LattePerfStatCounter numBeginRenderpassPerFrame;
+		LattePerfStatCounter numRenderPassFboChangesPerFrame;
+		LattePerfStatCounter numRenderPassSelfDependencySplitsPerFrame;
 	}vk;
 
 	// calculated stats (per frame)
