@@ -45,6 +45,11 @@ public:
 		m_value++;
 	}
 
+	void add(uint32 count)
+	{
+		m_value += count;
+	}
+
 	void decrement()
 	{
 		cemu_assert_debug(m_value > 0);
@@ -146,6 +151,12 @@ typedef struct
 		LattePerfStatCounter numRenderPassEndsReadbackPerFrame;
 		LattePerfStatCounter numRenderPassEndsFboTransitionPerFrame;
 		LattePerfStatCounter numRenderPassEndsOtherPerFrame;
+		LattePerfStatCounter numBufferCacheInitialUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheChangedUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheStreamoutUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCachePagesCheckedPerFrame;
+		LattePerfStatCounter numBufferCachePagesChangedPerFrame;
 	}vk;
 
 	// calculated stats (per frame)
