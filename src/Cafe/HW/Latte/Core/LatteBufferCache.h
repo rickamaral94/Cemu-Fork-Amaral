@@ -3,7 +3,15 @@
 void LatteBufferCache_init(size_t bufferSize);
 void LatteBufferCache_UnloadAll();
 
-uint32 LatteBufferCache_retrieveDataInCache(MPTR physAddress, uint32 size);
+enum class LatteBufferCacheUploadSource
+{
+	Vertex,
+	VertexUniform,
+	GeometryUniform,
+	PixelUniform,
+};
+
+uint32 LatteBufferCache_retrieveDataInCache(MPTR physAddress, uint32 size, LatteBufferCacheUploadSource uploadSource);
 void LatteBufferCache_copyStreamoutDataToCache(MPTR physAddress, uint32 size, uint32 streamoutBufferOffset);
 void LatteBufferCache_invalidate(MPTR physAddress, uint32 size);
 
