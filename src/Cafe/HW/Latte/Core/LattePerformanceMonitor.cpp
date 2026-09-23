@@ -141,7 +141,7 @@ void LattePerformanceMonitor_frameEnd()
 			if (fps < 28.0)
 			{
 				cemuLog_log(LogType::Force,
-					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} beginRenderPassesLastFrame={}",
+					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={}",
 					fps, drawCallsPerFrame, fastDrawCallsPerFrame,
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime), rlps, tlps,
 					(performanceMonitor.stats.indexDataUploadPerFrame + 1023) / 1024,
@@ -152,7 +152,12 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numRenderPass.get(),
 					performanceMonitor.vk.numFramebuffer.get(),
 					performanceMonitor.vk.numDrawBarriersPerFrame.get(),
-					performanceMonitor.vk.numBeginRenderpassPerFrame.get());
+					performanceMonitor.vk.numInputTextureBarriersPerFrame.get(),
+					performanceMonitor.vk.numRenderPassLoadBarriersPerFrame.get(),
+					performanceMonitor.vk.numSkippedColorFeedbackBarriersPerFrame.get(),
+					performanceMonitor.vk.numBeginRenderpassPerFrame.get(),
+					performanceMonitor.vk.numRenderPassFboChangesPerFrame.get(),
+					performanceMonitor.vk.numRenderPassSelfDependencySplitsPerFrame.get());
 			}
 		}
 	}
@@ -161,5 +166,10 @@ void LattePerformanceMonitor_frameEnd()
 void LattePerformanceMonitor_frameBegin()
 {
 	performanceMonitor.vk.numDrawBarriersPerFrame.reset();
+	performanceMonitor.vk.numInputTextureBarriersPerFrame.reset();
+	performanceMonitor.vk.numRenderPassLoadBarriersPerFrame.reset();
+	performanceMonitor.vk.numSkippedColorFeedbackBarriersPerFrame.reset();
 	performanceMonitor.vk.numBeginRenderpassPerFrame.reset();
+	performanceMonitor.vk.numRenderPassFboChangesPerFrame.reset();
+	performanceMonitor.vk.numRenderPassSelfDependencySplitsPerFrame.reset();
 }
