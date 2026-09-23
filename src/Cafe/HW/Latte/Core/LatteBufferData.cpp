@@ -159,6 +159,21 @@ bool LatteBufferCache_LoadRemappedUniforms(LatteDecompilerShader* shader, float*
 bool LatteBufferCache_syncGPUUniformBuffers(LatteDecompilerShader* shader, const uint32 uniformBufferRegOffset, LatteConst::ShaderType shaderType, uint32 bufferDirtyMask)
 {
 	cemu_assert_debug(shader->uniformMode == LATTE_DECOMPILER_UNIFORM_MODE_FULL_CBANK);
+	LatteBufferCacheUploadSource uploadSource;
+	switch (shaderType)
+	{
+	case LatteConst::ShaderType::Vertex:
+		uploadSource = LatteBufferCacheUploadSource::VertexUniform;
+		break;
+	case LatteConst::ShaderType::Geometry:
+		uploadSource = LatteBufferCacheUploadSource::GeometryUniform;
+		break;
+	case LatteConst::ShaderType::Pixel:
+		uploadSource = LatteBufferCacheUploadSource::PixelUniform;
+		break;
+	default:
+		UNREACHABLE;
+	}
 	bool hasChange = false;
 	for(const auto& buf : shader->list_quickBufferList)
 	{
@@ -174,7 +189,7 @@ bool LatteBufferCache_syncGPUUniformBuffers(LatteDecompilerShader* shader, const
 			continue;
 		}
 		uniformSize = std::min<uint32>(uniformSize, buf.size);
-		uint32 bindOffset = LatteBufferCache_retrieveDataInCache(physicalAddr, uniformSize);
+		uint32 bindOffset = LatteBufferCache_retrieveDataInCache(physicalAddr, uniformSize, uploadSource);
 		g_renderer->buffer_bindUniformBuffer(shaderType, i, bindOffset, uniformSize);
 	}
 	return hasChange;
@@ -292,7 +307,7 @@ void LatteBufferCache_Sync(uint32 maxVtxIndex, uint32 baseInstance, uint32 insta
 			}
 #endif
 
-			uint32 bindOffset = LatteBufferCache_retrieveDataInCache(bufferAddress, lookupRangeSize);
+			uint32 bindOffset = LatteBufferCache_retrieveDataInCache(bufferAddress, lookupRangeSize, LatteBufferCacheUploadSource::Vertex);
 			bindBufferArray[bindBufferArraySize].index = bufferIndex;
 			bindBufferArray[bindBufferArraySize].bindOffset = bindOffset;
 			bindBufferArray[bindBufferArraySize].bindSize = fixedBufferSize;
