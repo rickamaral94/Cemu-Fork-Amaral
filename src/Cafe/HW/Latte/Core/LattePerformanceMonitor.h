@@ -157,6 +157,8 @@ typedef struct
 		LattePerfStatCounter numBufferCacheUploadBytesPerFrame;
 		LattePerfStatCounter numBufferCachePagesCheckedPerFrame;
 		LattePerfStatCounter numBufferCachePagesChangedPerFrame;
+		LattePerfStatCounter numBufferCacheBridgedPagesPerFrame;
+		LattePerfStatCounter numBufferCacheMergedRunsPerFrame;
 	}vk;
 
 	// calculated stats (per frame)
