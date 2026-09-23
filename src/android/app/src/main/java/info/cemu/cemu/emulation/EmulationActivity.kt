@@ -16,6 +16,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import info.cemu.cemu.BuildConfig
 import info.cemu.cemu.common.android.context.internalFolder
 import info.cemu.cemu.common.android.inputevent.isFromPhysicalController
+import info.cemu.cemu.common.diagnostics.PerformanceTelemetryLogger
 import info.cemu.cemu.common.diagnostics.snapshotCompletedGameSessionLog
 import info.cemu.cemu.common.settings.AppSettingsStore
 import info.cemu.cemu.common.ui.components.ActivityContent
@@ -74,6 +75,7 @@ class EmulationActivity : AppCompatActivity() {
     private lateinit var inputManager: InputDelegateManager
     private var processInputEvents = true
     private var isQuitting = false
+    private lateinit var performanceTelemetry: PerformanceTelemetryLogger
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
         if (processInputEvents && InputHandler.onMotionEvent(event)) {
@@ -121,6 +123,8 @@ class EmulationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         inputManager = InputDelegateManager(this)
+        performanceTelemetry = PerformanceTelemetryLogger(applicationContext)
+        performanceTelemetry.start(lifecycleScope)
 
         setupHotkeys()
 
@@ -190,6 +194,7 @@ class EmulationActivity : AppCompatActivity() {
         }
         isQuitting = true
 
+        performanceTelemetry.stop()
         NativeLogging.logRecompilerStats()
         NativeEmulation.shutdownEmulation()
         NativeLogging.waitForFlush()
