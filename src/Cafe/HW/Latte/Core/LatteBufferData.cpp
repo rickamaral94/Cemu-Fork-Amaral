@@ -306,6 +306,8 @@ void LatteBufferCache_Sync(uint32 maxVtxIndex, uint32 baseInstance, uint32 insta
 				}
 			}
 #endif
+			if (g_renderer->buffer_tryBindSmallVertexBuffer(bufferIndex, bufferStride, memory_getPointerFromPhysicalOffset(bufferAddress), fixedBufferSize))
+				continue;
 
 			uint32 bindOffset = LatteBufferCache_retrieveDataInCache(bufferAddress, lookupRangeSize, LatteBufferCacheUploadSource::Vertex);
 			bindBufferArray[bindBufferArraySize].index = bufferIndex;
