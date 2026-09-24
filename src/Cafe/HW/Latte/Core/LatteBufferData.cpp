@@ -79,6 +79,11 @@ namespace
 		{
 			if (history->directSinceCache && history->lastDirectFrame == LatteGPUState.frameCounter)
 				return true;
+			if (!history->directSinceCache && history->lastUploadFrame == LatteGPUState.frameCounter)
+			{
+				performanceMonitor.vk.numDirectVertexPromotionGraceHitsPerFrame.increment();
+				return false;
+			}
 			history->promoted = false;
 			history->recentUploads = 0;
 			history->ignoreNextCacheUpload = history->directSinceCache;

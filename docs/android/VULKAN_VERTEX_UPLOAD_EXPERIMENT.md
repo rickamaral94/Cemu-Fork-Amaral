@@ -150,3 +150,16 @@ A revisão seguinte preserva `recentUploads` durante acertos do cache e só zera
 a evidência quando o último upload ultrapassa 120 quadros. Hashing continua
 restrito a buffers já promovidos; conteúdo estável ainda causa rebaixamento e
 retorno imediato ao cache.
+
+O teste dessa revisão manteve 27,16 FPS de mediana por aproximadamente 48
+minutos, contra 20,06 FPS na sessão anterior, sem crash, erro Vulkan ou
+throttling. A CPU de renderização caiu de 39,66 para 31,31 ms. Apesar do ganho,
+as transferências caíram apenas 4% e foram observadas 28.155 promoções e 23.330
+rebaixamentos, portanto o ganho fica preservado como candidato enquanto a
+causa específica continua sob investigação.
+
+Para evitar que uma consulta estável no mesmo quadro desfaça imediatamente uma
+promoção, o classificador concede tolerância somente até o fim desse quadro.
+Nesse caso ele usa o cache normalmente e registra `promotionGraceHits`; a partir
+do quadro seguinte, conteúdo estável volta a rebaixar o buffer. Isso não amplia
+os limites do ring, não pula uploads e não altera sincronização Vulkan.
