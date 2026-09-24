@@ -137,3 +137,16 @@ permanece no cache em `directVertexEligibility`:
 
 Esta etapa é somente diagnóstica e não muda limites, promoção, hashing,
 sincronização Vulkan nem o fallback para o buffer cache.
+
+Em 1.891 amostras da cena estável, `learningUploads` teve mediana de 41 por
+quadro e correlação de 0,918 com `bufferTransfer` e reaberturas do mesmo FBO.
+Não houve rejeição pelo ring buffer nem limpeza da tabela, e uploads acima de
+4 KiB foram desprezíveis. A instrumentação mostrou que acertos intermediários
+do cache zeravam a evidência, fazendo a implementação exigir uploads
+consecutivos apesar de a política documentada aceitar três uploads reais na
+janela de 120 quadros.
+
+A revisão seguinte preserva `recentUploads` durante acertos do cache e só zera
+a evidência quando o último upload ultrapassa 120 quadros. Hashing continua
+restrito a buffers já promovidos; conteúdo estável ainda causa rebaixamento e
+retorno imediato ao cache.

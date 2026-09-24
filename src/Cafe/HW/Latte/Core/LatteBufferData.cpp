@@ -128,7 +128,9 @@ namespace
 		if (!didUpload)
 		{
 			performanceMonitor.vk.numDirectVertexCacheHitsPerFrame.increment();
-			history.recentUploads = 0;
+			if (history.lastUploadFrame != 0 &&
+				LatteGPUState.frameCounter - history.lastUploadFrame > kUploadHistoryMaxAgeFrames)
+				history.recentUploads = 0;
 			return;
 		}
 		if (history.lastUploadFrame == LatteGPUState.frameCounter)
