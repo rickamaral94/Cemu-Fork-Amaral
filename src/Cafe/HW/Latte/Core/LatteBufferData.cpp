@@ -68,6 +68,20 @@ namespace
 		return it != s_directVertexHistory.end() ? &it->second : nullptr;
 	}
 
+	void RecordDirectVertexSizeBucket(uint32 size, bool promotion)
+	{
+		if (size <= 256)
+			(promotion ? performanceMonitor.vk.numDirectVertexPromotionsLe256PerFrame : performanceMonitor.vk.numDirectVertexBindsLe256PerFrame).increment();
+		else if (size <= 512)
+			(promotion ? performanceMonitor.vk.numDirectVertexPromotionsLe512PerFrame : performanceMonitor.vk.numDirectVertexBindsLe512PerFrame).increment();
+		else if (size <= 1024)
+			(promotion ? performanceMonitor.vk.numDirectVertexPromotionsLe1024PerFrame : performanceMonitor.vk.numDirectVertexBindsLe1024PerFrame).increment();
+		else if (size <= 2048)
+			(promotion ? performanceMonitor.vk.numDirectVertexPromotionsLe2048PerFrame : performanceMonitor.vk.numDirectVertexBindsLe2048PerFrame).increment();
+		else
+			(promotion ? performanceMonitor.vk.numDirectVertexPromotionsLe4096PerFrame : performanceMonitor.vk.numDirectVertexBindsLe4096PerFrame).increment();
+	}
+
 	bool ShouldBindVertexBufferDirectly(const DirectVertexHistoryKey& key, const uint8* data)
 	{
 		auto* history = FindDirectVertexHistory(key);
@@ -79,11 +93,6 @@ namespace
 		{
 			if (history->directSinceCache && history->lastDirectFrame == LatteGPUState.frameCounter)
 				return true;
-			if (!history->directSinceCache && history->lastUploadFrame == LatteGPUState.frameCounter)
-			{
-				performanceMonitor.vk.numDirectVertexPromotionGraceHitsPerFrame.increment();
-				return false;
-			}
 			history->promoted = false;
 			history->recentUploads = 0;
 			history->ignoreNextCacheUpload = history->directSinceCache;
@@ -103,6 +112,7 @@ namespace
 		{
 			history->directSinceCache = true;
 			history->lastDirectFrame = LatteGPUState.frameCounter;
+			RecordDirectVertexSizeBucket(key.size, false);
 		}
 	}
 
@@ -154,6 +164,7 @@ namespace
 			history.contentHash = HashDirectVertexData(data, key.size);
 			history.promoted = true;
 			performanceMonitor.vk.numDirectVertexPromotionsPerFrame.increment();
+			RecordDirectVertexSizeBucket(key.size, true);
 		}
 	}
 }

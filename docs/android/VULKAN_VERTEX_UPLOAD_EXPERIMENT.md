@@ -158,8 +158,17 @@ as transferências caíram apenas 4% e foram observadas 28.155 promoções e 23.
 rebaixamentos, portanto o ganho fica preservado como candidato enquanto a
 causa específica continua sob investigação.
 
-Para evitar que uma consulta estável no mesmo quadro desfaça imediatamente uma
-promoção, o classificador concede tolerância somente até o fim desse quadro.
-Nesse caso ele usa o cache normalmente e registra `promotionGraceHits`; a partir
-do quadro seguinte, conteúdo estável volta a rebaixar o buffer. Isso não amplia
-os limites do ring, não pula uploads e não altera sincronização Vulkan.
+Um teste posterior concedeu tolerância até o fim do quadro para impedir que uma
+consulta estável desfizesse imediatamente uma promoção. Em 2.132 amostras e 38
+minutos, as despromoções caíram de 8,11 para 0,11 por segundo e as transferências
+de buffer caíram de 99 para 68 por quadro. Porém, o caminho direto subiu de 190
+chamadas e 34 KiB para 483 chamadas e 467 KiB por quadro, passou a sofrer 9,46
+rejeições do ring por quadro e o FPS médio caiu de 27,16 para 20,85. Não houve
+throttling, pressão de memória ou erro Vulkan.
+
+A tolerância foi portanto removida, preservando o comportamento da revisão que
+atingiu 27,16 FPS. Para localizar quais tamanhos podem ser promovidos sem saturar
+o ring, o log agora registra contagens mutuamente exclusivas em
+`directVertexPromotionSizes` e `directVertexBindSizes`, nas faixas de até 256 B,
+512 B, 1 KiB, 2 KiB e 4 KiB. Esta etapa não altera o limite elegível de 4 KiB,
+os limites do ring, a sincronização Vulkan nem o fallback para o buffer cache.

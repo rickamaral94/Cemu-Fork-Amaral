@@ -180,7 +180,16 @@ typedef struct
 		LattePerfStatCounter numDirectVertexOversizedUploadsPerFrame;
 		LattePerfStatCounter numDirectVertexOversizedUploadBytesPerFrame;
 		LattePerfStatCounter numDirectVertexHistoryResetsPerFrame;
-		LattePerfStatCounter numDirectVertexPromotionGraceHitsPerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe256PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe512PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe1024PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe2048PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe4096PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe256PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe512PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe1024PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe2048PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe4096PerFrame;
 	}vk;
 
 	// calculated stats (per frame)
