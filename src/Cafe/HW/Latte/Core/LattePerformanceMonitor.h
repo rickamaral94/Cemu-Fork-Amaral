@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #define PERFORMANCE_MONITOR_TRACK_CYCLES	(5) // one cycle lasts one second
 
 // todo - replace PPCTimer with HighResolutionTimer.h
@@ -194,6 +196,7 @@ typedef struct
 		LattePerfStatCounter numFastDrawPassEndsQueueEmptyPerFrame;
 		LattePerfStatCounter numFastDrawPassEndsTextureChangePerFrame;
 		LattePerfStatCounter numFastDrawPassEndsContextChangePerFrame;
+		std::array<LattePerfStatCounter, 16> numFastDrawPassEndsContextBucketPerFrame;
 		LattePerfStatCounter numFastDrawPassEndsSamplerChangePerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedType3PerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedPacketPerFrame;

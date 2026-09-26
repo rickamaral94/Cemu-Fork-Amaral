@@ -197,3 +197,10 @@ log passa a registrar `fastDrawPassEnds`: streamout ativo, fim da fila de
 comandos, mudança de textura, mudança de contexto, mudança de sampler, comando
 Type-3 não suportado ou outro tipo de pacote. Esta etapa é somente diagnóstica
 e não amplia o fast path nem altera estado gráfico, sincronização ou fallback.
+
+Os diagnósticos de 26 de setembro mostraram que mudanças de contexto respondem
+por aproximadamente 94–95% dos encerramentos na cena pesada. Para localizar o
+estado responsável sem adicionar custo de um histograma por registrador, o log
+agora divide o espaço de contexto em 16 faixas de 256 registradores (`A0xx` a
+`AFxx`). A contagem ocorre somente quando o valor escrito realmente mudou e
+continua sendo uma observação global do core, sem condição por jogo.

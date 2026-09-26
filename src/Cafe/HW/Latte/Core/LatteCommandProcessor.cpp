@@ -1130,7 +1130,14 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 				}
 				case IT_SET_CONTEXT_REG:
 				{
-					bool hasChanged = LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_CONTEXT>(cmdData, nWords, [](uint32 registerStart, uint32 registerEnd, bool regValuesChanged){});
+					bool hasChanged = LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_CONTEXT>(cmdData, nWords, [](uint32 registerStart, uint32 registerEnd, bool regValuesChanged)
+						{
+							if (!regValuesChanged)
+								return;
+							const uint32 contextOffset = registerStart - LATTE_REG_BASE_CONTEXT;
+							const uint32 bucketIndex = std::min<uint32>(contextOffset >> 8, 15);
+							performanceMonitor.vk.numFastDrawPassEndsContextBucketPerFrame[bucketIndex].increment();
+						});
 					if (hasChanged)
 					{
 						performanceMonitor.vk.numFastDrawPassEndsContextChangePerFrame.increment();
