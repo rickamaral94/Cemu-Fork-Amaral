@@ -52,7 +52,7 @@ bool LatteQueryObjectVk::getResult(uint64& numSamplesPassed)
 
 void LatteQueryObjectVk::beginFragment()
 {
-	m_rendererVk->draw_endRenderPass();
+	m_rendererVk->draw_endRenderPass(VulkanRenderer::RenderPassEndReason::Query);
 
 	handleFinishedFragments();
 	uint32 newQueryIndex = acquireQueryIndex();
@@ -80,7 +80,7 @@ void LatteQueryObjectVk::begin()
 
 void LatteQueryObjectVk::endFragment()
 {
-	m_rendererVk->draw_endRenderPass();
+	m_rendererVk->draw_endRenderPass(VulkanRenderer::RenderPassEndReason::Query);
 
 	cemu_assert_debug(m_hasActiveFragment);
 	uint32 queryIndex = list_queryFragments.back().queryIndex;

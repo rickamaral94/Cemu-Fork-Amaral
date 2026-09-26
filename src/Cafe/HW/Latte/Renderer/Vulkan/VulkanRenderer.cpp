@@ -2078,7 +2078,7 @@ bool VulkanRenderer::ImguiBegin(bool mainWindow)
 	if (!AcquireNextSwapchainImage(mainWindow))
 		return false;
 
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Presentation);
 	m_state.currentPipeline = VK_NULL_HANDLE;
 
 	ImGui_ImplVulkan_CreateFontsTexture(m_state.currentCommandBuffer);
@@ -2224,7 +2224,7 @@ void VulkanRenderer::WaitForNextFinishedCommandBuffer()
 
 void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphore waitSemaphore)
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Submit);
 
 	occlusionQuery_notifyEndCommandBuffer();
 
@@ -3266,7 +3266,7 @@ void VulkanRenderer::ClearColorbuffer(bool padView)
 
 void VulkanRenderer::ClearColorImageRaw(VkImage image, uint32 sliceIndex, uint32 mipIndex, const VkClearColorValue& color, VkImageLayout inputLayout, VkImageLayout outputLayout)
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Clear);
 
 	VkImageSubresourceRange subresourceRange{};
 	subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -3336,7 +3336,7 @@ void VulkanRenderer::DrawBackbufferQuad(LatteTextureView* texView, RendererOutpu
 
 	auto& chainInfo = GetChainInfo(!padView);
 	LatteTextureViewVk* texViewVk = (LatteTextureViewVk*)texView;
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Presentation);
 
 	// barrier for input texture
 	VkMemoryBarrier memoryBarrier{};
@@ -3601,7 +3601,7 @@ VkDescriptorSetInfo::~VkDescriptorSetInfo()
 
 void VulkanRenderer::texture_clearSlice(LatteTexture* hostTexture, sint32 sliceIndex, sint32 mipIndex)
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Clear);
 	auto vkTexture = (LatteTextureVk*)hostTexture;
 	if (vkTexture->isDepth)
 		texture_clearDepthSlice(hostTexture, sliceIndex, mipIndex, true, vkTexture->hasStencil, 0.0f, 0);
@@ -3624,7 +3624,7 @@ void VulkanRenderer::texture_clearColorSlice(LatteTexture* hostTexture, sint32 s
 
 void VulkanRenderer::texture_clearDepthSlice(LatteTexture* hostTexture, uint32 sliceIndex, sint32 mipIndex, bool clearDepth, bool clearStencil, float depthValue, uint32 stencilValue)
 {
-	draw_endRenderPass(); // vkCmdClearDepthStencilImage must not be inside renderpass
+	draw_endRenderPass(RenderPassEndReason::Clear); // vkCmdClearDepthStencilImage must not be inside renderpass
 
 	auto vkTexture = (LatteTextureVk*)hostTexture;
 
@@ -3669,7 +3669,7 @@ void VulkanRenderer::texture_loadSlice(LatteTexture* hostTexture, sint32 width, 
 	auto vkImageObj = vkTexture->GetImageObj();
 	vkImageObj->flagForCurrentCommandBuffer();
 
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::TextureTransfer);
 
 	VkMemoryRequirements memRequirements;
 	vkGetImageMemoryRequirements(m_logicalDevice, vkImageObj->m_image, &memRequirements);
@@ -3782,7 +3782,7 @@ void VulkanRenderer::texture_copyImageSubData(LatteTexture* src, sint32 srcMip, 
 	LatteTextureVk* srcVk = static_cast<LatteTextureVk*>(src);
 	LatteTextureVk* dstVk = static_cast<LatteTextureVk*>(dst);
 
-	draw_endRenderPass(); // vkCmdCopyImage must be called outside of a renderpass
+	draw_endRenderPass(RenderPassEndReason::TextureTransfer); // vkCmdCopyImage must be called outside of a renderpass
 
 	VKRObjectTexture* srcVkObj = srcVk->GetImageObj();
 	VKRObjectTexture* dstVkObj = dstVk->GetImageObj();
@@ -3928,6 +3928,35 @@ void VulkanRenderer::buffer_bindVertexBuffers(std::span<BindBufferParam> binding
 	}
 }
 
+bool VulkanRenderer::buffer_tryBindSmallVertexBuffer(uint8 bufferIndex, uint16 stride, const uint8* data, uint32 size)
+{
+#if BOOST_PLAT_ANDROID
+	static constexpr uint32 kMaxDirectVertexUploadSize = 4 * 1024;
+	static constexpr uint32 kMaxDirectVertexUploadsPerFrame = 512;
+	static constexpr uint32 kMaxDirectVertexUploadBytesPerFrame = 512 * 1024;
+	if (size == 0 || size > kMaxDirectVertexUploadSize)
+		return false;
+	if (performanceMonitor.vk.numDirectVertexUploadsPerFrame.get() >= kMaxDirectVertexUploadsPerFrame ||
+		performanceMonitor.vk.numDirectVertexUploadBytesPerFrame.get() + size > kMaxDirectVertexUploadBytesPerFrame)
+		return false;
+	(void)stride;
+
+	auto& vertexAllocator = memoryManager->getMetalStrideWorkaroundAllocator();
+	auto reservation = vertexAllocator.AllocateBufferMemory(size, 128);
+	memcpy(reservation.memPtr, data, size);
+
+	cemu_assert_debug(bufferIndex < Latte::GPU_LIMITS::NUM_VERTEX_BUFFERS);
+	m_state.currentVertexBinding[bufferIndex].offset = 0xFFFFFFFF;
+	VkDeviceSize bindOffset = reservation.bufferOffset;
+	vkCmdBindVertexBuffers(m_state.currentCommandBuffer, bufferIndex, 1, &reservation.vkBuffer, &bindOffset);
+	performanceMonitor.vk.numDirectVertexUploadsPerFrame.increment();
+	performanceMonitor.vk.numDirectVertexUploadBytesPerFrame.add(size);
+	return true;
+#else
+	return false;
+#endif
+}
+
 void VulkanRenderer::buffer_bindVertexStrideWorkaroundBuffer(VkBuffer fixedBuffer, uint32 offset, uint32 bufferIndex, uint32 size)
 {
 	cemu_assert_debug(bufferIndex < Latte::GPU_LIMITS::NUM_VERTEX_BUFFERS);
@@ -4001,7 +4030,7 @@ void VulkanRenderer::bufferCache_init(const sint32 bufferSize)
 
 void VulkanRenderer::bufferCache_upload(uint8* buffer, sint32 size, uint32 bufferOffset)
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::BufferTransfer);
 
 	VKRSynchronizedRingAllocator& vkMemAllocator = memoryManager->getStagingAllocator();
 
@@ -4027,7 +4056,7 @@ void VulkanRenderer::bufferCache_upload(uint8* buffer, sint32 size, uint32 buffe
 void VulkanRenderer::bufferCache_copy(uint32 srcOffset, uint32 dstOffset, uint32 size)
 {
 	cemu_assert_debug(!m_useHostMemoryForCache);
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::BufferTransfer);
 
 	barrier_sequentializeTransfer();
 
@@ -4045,7 +4074,7 @@ void VulkanRenderer::bufferCache_copy(uint32 srcOffset, uint32 dstOffset, uint32
 
 void VulkanRenderer::bufferCache_copyStreamoutToMainBuffer(uint32 srcOffset, uint32 dstOffset, uint32 size)
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::BufferTransfer);
 
 	VkBuffer dstBuffer;
 	if (m_useHostMemoryForCache)

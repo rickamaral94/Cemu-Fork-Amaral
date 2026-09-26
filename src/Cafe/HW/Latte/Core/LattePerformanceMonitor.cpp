@@ -141,7 +141,7 @@ void LattePerformanceMonitor_frameEnd()
 			if (fps < 28.0)
 			{
 				cemuLog_log(LogType::Force,
-					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} beginRenderPassesLastFrame={}",
+					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={} renderPassReopensSameFboLastFrame={} bufferCache=[initialUploads:{},changedUploads:{},streamoutUploads:{},uploadKiB:{},pagesChecked:{},pagesChanged:{}] uploadSources=[vertex:{}/{},vsUniform:{}/{},gsUniform:{}/{},psUniform:{}/{},directVertex:{}/{}] directVertexClassifier=[probes:{},changes:{},promotions:{},demotions:{}] directVertexEligibility=[smallRequests:{},historyMisses:{},cacheHits:{},learningUploads:{},sameFrameUploads:{},ringRejects:{},oversizedUploads:{},oversizedKiB:{},historyResets:{}] directVertexPromotionSizes=[le256:{},le512:{},le1024:{},le2048:{},le4096:{}] directVertexBindSizes=[le256:{},le512:{},le1024:{},le2048:{},le4096:{}] fastDrawPassEnds=[streamout:{},queueEmpty:{},textureChange:{},contextChange:{},samplerChange:{},unsupportedType3:{},unsupportedPacket:{}] renderPassEndsLastFrame=[submit:{},present:{},clear:{},textureTransfer:{},bufferTransfer:{},query:{},readback:{},fboTransition:{},other:{}]",
 					fps, drawCallsPerFrame, fastDrawCallsPerFrame,
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime), rlps, tlps,
 					(performanceMonitor.stats.indexDataUploadPerFrame + 1023) / 1024,
@@ -152,7 +152,68 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numRenderPass.get(),
 					performanceMonitor.vk.numFramebuffer.get(),
 					performanceMonitor.vk.numDrawBarriersPerFrame.get(),
-					performanceMonitor.vk.numBeginRenderpassPerFrame.get());
+					performanceMonitor.vk.numInputTextureBarriersPerFrame.get(),
+					performanceMonitor.vk.numRenderPassLoadBarriersPerFrame.get(),
+					performanceMonitor.vk.numSkippedColorFeedbackBarriersPerFrame.get(),
+					performanceMonitor.vk.numBeginRenderpassPerFrame.get(),
+					performanceMonitor.vk.numRenderPassFboChangesPerFrame.get(),
+					performanceMonitor.vk.numRenderPassSelfDependencySplitsPerFrame.get(),
+					performanceMonitor.vk.numRenderPassReopensSameFboPerFrame.get(),
+					performanceMonitor.vk.numBufferCacheInitialUploadsPerFrame.get(),
+					performanceMonitor.vk.numBufferCacheChangedUploadsPerFrame.get(),
+					performanceMonitor.vk.numBufferCacheStreamoutUploadsPerFrame.get(),
+					(performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.get() + 1023) / 1024,
+					performanceMonitor.vk.numBufferCachePagesCheckedPerFrame.get(),
+					performanceMonitor.vk.numBufferCachePagesChangedPerFrame.get(),
+					performanceMonitor.vk.numBufferCacheVertexUploadsPerFrame.get(),
+					(performanceMonitor.vk.numBufferCacheVertexUploadBytesPerFrame.get() + 1023) / 1024,
+					performanceMonitor.vk.numBufferCacheVertexUniformUploadsPerFrame.get(),
+					(performanceMonitor.vk.numBufferCacheVertexUniformUploadBytesPerFrame.get() + 1023) / 1024,
+					performanceMonitor.vk.numBufferCacheGeometryUniformUploadsPerFrame.get(),
+					(performanceMonitor.vk.numBufferCacheGeometryUniformUploadBytesPerFrame.get() + 1023) / 1024,
+					performanceMonitor.vk.numBufferCachePixelUniformUploadsPerFrame.get(),
+					(performanceMonitor.vk.numBufferCachePixelUniformUploadBytesPerFrame.get() + 1023) / 1024,
+					performanceMonitor.vk.numDirectVertexUploadsPerFrame.get(),
+					(performanceMonitor.vk.numDirectVertexUploadBytesPerFrame.get() + 1023) / 1024,
+					performanceMonitor.vk.numDirectVertexProbesPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexChangesPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexPromotionsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexDemotionsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexSmallRequestsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexHistoryMissesPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexCacheHitsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexLearningUploadsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexSameFrameUploadsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexRingRejectsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexOversizedUploadsPerFrame.get(),
+					(performanceMonitor.vk.numDirectVertexOversizedUploadBytesPerFrame.get() + 1023) / 1024,
+					performanceMonitor.vk.numDirectVertexHistoryResetsPerFrame.get(),
+					performanceMonitor.vk.numDirectVertexPromotionsLe256PerFrame.get(),
+					performanceMonitor.vk.numDirectVertexPromotionsLe512PerFrame.get(),
+					performanceMonitor.vk.numDirectVertexPromotionsLe1024PerFrame.get(),
+					performanceMonitor.vk.numDirectVertexPromotionsLe2048PerFrame.get(),
+					performanceMonitor.vk.numDirectVertexPromotionsLe4096PerFrame.get(),
+					performanceMonitor.vk.numDirectVertexBindsLe256PerFrame.get(),
+					performanceMonitor.vk.numDirectVertexBindsLe512PerFrame.get(),
+					performanceMonitor.vk.numDirectVertexBindsLe1024PerFrame.get(),
+					performanceMonitor.vk.numDirectVertexBindsLe2048PerFrame.get(),
+					performanceMonitor.vk.numDirectVertexBindsLe4096PerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsStreamoutPerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsQueueEmptyPerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsTextureChangePerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextChangePerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsUnsupportedPacketPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsSubmitPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsPresentationPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsClearPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsTextureTransferPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsBufferTransferPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsQueryPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsReadbackPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsFboTransitionPerFrame.get(),
+					performanceMonitor.vk.numRenderPassEndsOtherPerFrame.get());
 			}
 		}
 	}
@@ -161,5 +222,66 @@ void LattePerformanceMonitor_frameEnd()
 void LattePerformanceMonitor_frameBegin()
 {
 	performanceMonitor.vk.numDrawBarriersPerFrame.reset();
+	performanceMonitor.vk.numInputTextureBarriersPerFrame.reset();
+	performanceMonitor.vk.numRenderPassLoadBarriersPerFrame.reset();
+	performanceMonitor.vk.numSkippedColorFeedbackBarriersPerFrame.reset();
 	performanceMonitor.vk.numBeginRenderpassPerFrame.reset();
+	performanceMonitor.vk.numRenderPassFboChangesPerFrame.reset();
+	performanceMonitor.vk.numRenderPassSelfDependencySplitsPerFrame.reset();
+	performanceMonitor.vk.numRenderPassReopensSameFboPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsSubmitPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsPresentationPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsClearPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsTextureTransferPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsBufferTransferPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsQueryPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsReadbackPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsFboTransitionPerFrame.reset();
+	performanceMonitor.vk.numRenderPassEndsOtherPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheInitialUploadsPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheChangedUploadsPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheStreamoutUploadsPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheUploadBytesPerFrame.reset();
+	performanceMonitor.vk.numBufferCachePagesCheckedPerFrame.reset();
+	performanceMonitor.vk.numBufferCachePagesChangedPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheVertexUploadsPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheVertexUploadBytesPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheVertexUniformUploadsPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheVertexUniformUploadBytesPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheGeometryUniformUploadsPerFrame.reset();
+	performanceMonitor.vk.numBufferCacheGeometryUniformUploadBytesPerFrame.reset();
+	performanceMonitor.vk.numBufferCachePixelUniformUploadsPerFrame.reset();
+	performanceMonitor.vk.numBufferCachePixelUniformUploadBytesPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexUploadsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexUploadBytesPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexProbesPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexChangesPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexPromotionsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexDemotionsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexSmallRequestsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexHistoryMissesPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexCacheHitsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexLearningUploadsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexSameFrameUploadsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexRingRejectsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexOversizedUploadsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexOversizedUploadBytesPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexHistoryResetsPerFrame.reset();
+	performanceMonitor.vk.numDirectVertexPromotionsLe256PerFrame.reset();
+	performanceMonitor.vk.numDirectVertexPromotionsLe512PerFrame.reset();
+	performanceMonitor.vk.numDirectVertexPromotionsLe1024PerFrame.reset();
+	performanceMonitor.vk.numDirectVertexPromotionsLe2048PerFrame.reset();
+	performanceMonitor.vk.numDirectVertexPromotionsLe4096PerFrame.reset();
+	performanceMonitor.vk.numDirectVertexBindsLe256PerFrame.reset();
+	performanceMonitor.vk.numDirectVertexBindsLe512PerFrame.reset();
+	performanceMonitor.vk.numDirectVertexBindsLe1024PerFrame.reset();
+	performanceMonitor.vk.numDirectVertexBindsLe2048PerFrame.reset();
+	performanceMonitor.vk.numDirectVertexBindsLe4096PerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsStreamoutPerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsQueueEmptyPerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsTextureChangePerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsContextChangePerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsUnsupportedPacketPerFrame.reset();
 }

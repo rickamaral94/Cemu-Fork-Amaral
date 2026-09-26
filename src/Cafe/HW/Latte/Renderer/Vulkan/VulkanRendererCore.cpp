@@ -1039,7 +1039,10 @@ void VulkanRenderer::sync_inputTexturesChanged(bool withinFeedbackLoopRenderPass
 		// Relax color feedback without a guest sync, but keep the read indices above updated for later passes.
 		if (withinFeedbackLoopRenderPass && !m_state.descriptorSetsChanged && !m_state.colorBufferSyncPending
 			&& m_state.m_curRenderpassSelfDependencyInfo.GetAspectMask() == VK_IMAGE_ASPECT_COLOR_BIT)
+		{
+			performanceMonitor.vk.numSkippedColorFeedbackBarriersPerFrame.increment();
 			return;
+		}
 
 		VkMemoryBarrier memoryBarrier{};
 		memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -1079,6 +1082,7 @@ void VulkanRenderer::sync_inputTexturesChanged(bool withinFeedbackLoopRenderPass
 		vkCmdPipelineBarrier(m_state.currentCommandBuffer, srcStage, dstStage, dependencyFlags, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
 
 		performanceMonitor.vk.numDrawBarriersPerFrame.increment();
+		performanceMonitor.vk.numInputTextureBarriersPerFrame.increment();
 
 		m_state.currentFlushIndex++;
 	}
@@ -1129,6 +1133,7 @@ void VulkanRenderer::sync_RenderPassLoadTextures(CachedFBOVk* fboVk)
 		vkCmdPipelineBarrier(m_state.currentCommandBuffer, srcStage, dstStage, 0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
 
 		performanceMonitor.vk.numDrawBarriersPerFrame.increment();
+		performanceMonitor.vk.numRenderPassLoadBarriersPerFrame.increment();
 
 		m_state.currentFlushIndex++;
 	}
@@ -1213,6 +1218,9 @@ void VulkanRenderer::draw_setRenderPass()
 	bool feedbackLoopHandlesSelfDependency = UseAttachmentFeedbackLoop() && currentSelfDependencyInfo.HasSelfDependency() && !currentSelfDependencyInfo.HasVertexOrGeometrySelfDependency();
 	bool selfDependencyNeedsPassSplit = currentSelfDependencyInfo.HasSelfDependency() && !feedbackLoopHandlesSelfDependency;
 	bool overridePassReuse = selfDependencyNeedsPassSplit && (GetConfig().vk_accurate_barriers || m_state.activePipelineInfo->neverSkipAccurateBarrier);
+	CachedFBOVk* previousRenderPassFbo = m_state.activeRenderpassFBO ? m_state.activeRenderpassFBO : m_state.lastRenderpassFBO;
+	const bool renderPassFboChanged = previousRenderPassFbo != fboVk;
+	const bool reopensSameFbo = !m_state.activeRenderpassFBO && previousRenderPassFbo == fboVk;
 
 	if (!overridePassReuse && m_state.activeRenderpassFBO == fboVk)
 	{
@@ -1225,7 +1233,7 @@ void VulkanRenderer::draw_setRenderPass()
 		}
 		return;
 	}
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::FboTransition);
 	if (m_state.descriptorSetsChanged)
 		sync_inputTexturesChanged();
 
@@ -1262,17 +1270,54 @@ void VulkanRenderer::draw_setRenderPass()
 	vkObjFramebuffer->flagForCurrentCommandBuffer();
 
 	performanceMonitor.vk.numBeginRenderpassPerFrame.increment();
+	if (renderPassFboChanged)
+		performanceMonitor.vk.numRenderPassFboChangesPerFrame.increment();
+	if (overridePassReuse && !renderPassFboChanged)
+		performanceMonitor.vk.numRenderPassSelfDependencySplitsPerFrame.increment();
+	if (reopensSameFbo)
+		performanceMonitor.vk.numRenderPassReopensSameFboPerFrame.increment();
 }
 
-void VulkanRenderer::draw_endRenderPass()
+void VulkanRenderer::draw_endRenderPass(RenderPassEndReason reason)
 {
 	if (!m_state.activeRenderpassFBO)
 		return;
+	switch (reason)
+	{
+	case RenderPassEndReason::Submit:
+		performanceMonitor.vk.numRenderPassEndsSubmitPerFrame.increment();
+		break;
+	case RenderPassEndReason::Presentation:
+		performanceMonitor.vk.numRenderPassEndsPresentationPerFrame.increment();
+		break;
+	case RenderPassEndReason::Clear:
+		performanceMonitor.vk.numRenderPassEndsClearPerFrame.increment();
+		break;
+	case RenderPassEndReason::TextureTransfer:
+		performanceMonitor.vk.numRenderPassEndsTextureTransferPerFrame.increment();
+		break;
+	case RenderPassEndReason::BufferTransfer:
+		performanceMonitor.vk.numRenderPassEndsBufferTransferPerFrame.increment();
+		break;
+	case RenderPassEndReason::Query:
+		performanceMonitor.vk.numRenderPassEndsQueryPerFrame.increment();
+		break;
+	case RenderPassEndReason::Readback:
+		performanceMonitor.vk.numRenderPassEndsReadbackPerFrame.increment();
+		break;
+	case RenderPassEndReason::FboTransition:
+		performanceMonitor.vk.numRenderPassEndsFboTransitionPerFrame.increment();
+		break;
+	case RenderPassEndReason::Other:
+		performanceMonitor.vk.numRenderPassEndsOtherPerFrame.increment();
+		break;
+	}
 	if (m_featureControl.deviceExtensions.dynamic_rendering)
 		vkCmdEndRenderingKHR(m_state.currentCommandBuffer);
 	else
 		vkCmdEndRenderPass(m_state.currentCommandBuffer);
 	sync_RenderPassStoreTextures(m_state.activeRenderpassFBO);
+	m_state.lastRenderpassFBO = m_state.activeRenderpassFBO;
 	m_state.activeRenderpassFBO = nullptr;
 }
 
@@ -1839,7 +1884,7 @@ void VulkanRenderer::draw_endSequence()
 
 void VulkanRenderer::debug_genericBarrier()
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Other);
 
 	VkMemoryBarrier memoryBarrier{};
 	memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;

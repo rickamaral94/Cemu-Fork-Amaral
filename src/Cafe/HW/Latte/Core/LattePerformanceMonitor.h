@@ -45,6 +45,11 @@ public:
 		m_value++;
 	}
 
+	void add(uint32 count)
+	{
+		m_value += count;
+	}
+
 	void decrement()
 	{
 		cemu_assert_debug(m_value > 0);
@@ -130,7 +135,68 @@ typedef struct
 
 		// per frame
 		LattePerfStatCounter numDrawBarriersPerFrame;
+		LattePerfStatCounter numInputTextureBarriersPerFrame;
+		LattePerfStatCounter numRenderPassLoadBarriersPerFrame;
+		LattePerfStatCounter numSkippedColorFeedbackBarriersPerFrame;
 		LattePerfStatCounter numBeginRenderpassPerFrame;
+		LattePerfStatCounter numRenderPassFboChangesPerFrame;
+		LattePerfStatCounter numRenderPassSelfDependencySplitsPerFrame;
+		LattePerfStatCounter numRenderPassReopensSameFboPerFrame;
+		LattePerfStatCounter numRenderPassEndsSubmitPerFrame;
+		LattePerfStatCounter numRenderPassEndsPresentationPerFrame;
+		LattePerfStatCounter numRenderPassEndsClearPerFrame;
+		LattePerfStatCounter numRenderPassEndsTextureTransferPerFrame;
+		LattePerfStatCounter numRenderPassEndsBufferTransferPerFrame;
+		LattePerfStatCounter numRenderPassEndsQueryPerFrame;
+		LattePerfStatCounter numRenderPassEndsReadbackPerFrame;
+		LattePerfStatCounter numRenderPassEndsFboTransitionPerFrame;
+		LattePerfStatCounter numRenderPassEndsOtherPerFrame;
+		LattePerfStatCounter numBufferCacheInitialUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheChangedUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheStreamoutUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCachePagesCheckedPerFrame;
+		LattePerfStatCounter numBufferCachePagesChangedPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUniformUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUniformUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCacheGeometryUniformUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheGeometryUniformUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCachePixelUniformUploadsPerFrame;
+		LattePerfStatCounter numBufferCachePixelUniformUploadBytesPerFrame;
+		LattePerfStatCounter numDirectVertexUploadsPerFrame;
+		LattePerfStatCounter numDirectVertexUploadBytesPerFrame;
+		LattePerfStatCounter numDirectVertexProbesPerFrame;
+		LattePerfStatCounter numDirectVertexChangesPerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsPerFrame;
+		LattePerfStatCounter numDirectVertexDemotionsPerFrame;
+		LattePerfStatCounter numDirectVertexSmallRequestsPerFrame;
+		LattePerfStatCounter numDirectVertexHistoryMissesPerFrame;
+		LattePerfStatCounter numDirectVertexCacheHitsPerFrame;
+		LattePerfStatCounter numDirectVertexLearningUploadsPerFrame;
+		LattePerfStatCounter numDirectVertexSameFrameUploadsPerFrame;
+		LattePerfStatCounter numDirectVertexRingRejectsPerFrame;
+		LattePerfStatCounter numDirectVertexOversizedUploadsPerFrame;
+		LattePerfStatCounter numDirectVertexOversizedUploadBytesPerFrame;
+		LattePerfStatCounter numDirectVertexHistoryResetsPerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe256PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe512PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe1024PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe2048PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe4096PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe256PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe512PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe1024PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe2048PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe4096PerFrame;
+		LattePerfStatCounter numFastDrawPassEndsStreamoutPerFrame;
+		LattePerfStatCounter numFastDrawPassEndsQueueEmptyPerFrame;
+		LattePerfStatCounter numFastDrawPassEndsTextureChangePerFrame;
+		LattePerfStatCounter numFastDrawPassEndsContextChangePerFrame;
+		LattePerfStatCounter numFastDrawPassEndsSamplerChangePerFrame;
+		LattePerfStatCounter numFastDrawPassEndsUnsupportedType3PerFrame;
+		LattePerfStatCounter numFastDrawPassEndsUnsupportedPacketPerFrame;
 	}vk;
 
 	// calculated stats (per frame)
