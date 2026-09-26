@@ -172,3 +172,15 @@ o ring, o log agora registra contagens mutuamente exclusivas em
 `directVertexPromotionSizes` e `directVertexBindSizes`, nas faixas de até 256 B,
 512 B, 1 KiB, 2 KiB e 4 KiB. Esta etapa não altera o limite elegível de 4 KiB,
 os limites do ring, a sincronização Vulkan nem o fallback para o buffer cache.
+
+Em seguida, uma sessão de 11 minutos na cena ampla da Ilha Taura registrou
+7.519 draws por quadro em média, 22,09 FPS, 189 binds diretos e 34 KiB por
+quadro, sem rejeições do ring. Os histogramas mostraram que buffers de até
+256 B responderam por 95,32% dos binds diretos com apenas 11,58% das promoções.
+Já a faixa exclusiva de 1.025 a 2.048 B respondeu por 81,65% das promoções,
+mas somente 4,44% dos binds.
+
+Com base nessa relação entre custo e reutilização, somente buffers de até 256 B
+podem ser promovidos. Os candidatos maiores continuam usando o buffer cache e
+o fallback existente; o limite de observação permanece em 4 KiB e os limites
+do ring e a sincronização Vulkan não mudam.

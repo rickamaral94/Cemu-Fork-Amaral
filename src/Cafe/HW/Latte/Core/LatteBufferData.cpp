@@ -121,6 +121,7 @@ namespace
 		static constexpr uint32 kMaxTrackedBuffers = 2048;
 		static constexpr uint32 kRequiredRecentUploads = 3;
 		static constexpr uint32 kUploadHistoryMaxAgeFrames = 120;
+		static constexpr uint32 kMaxPromotionSize = 256;
 
 		performanceMonitor.vk.numDirectVertexSmallRequestsPerFrame.increment();
 		auto [it, inserted] = s_directVertexHistory.try_emplace(key);
@@ -159,7 +160,7 @@ namespace
 		else
 			history.recentUploads = 1;
 		history.lastUploadFrame = LatteGPUState.frameCounter;
-		if (history.recentUploads >= kRequiredRecentUploads && !history.promoted)
+		if (history.recentUploads >= kRequiredRecentUploads && !history.promoted && key.size <= kMaxPromotionSize)
 		{
 			history.contentHash = HashDirectVertexData(data, key.size);
 			history.promoted = true;
