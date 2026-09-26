@@ -184,3 +184,16 @@ Com base nessa relação entre custo e reutilização, somente buffers de até 2
 podem ser promovidos. Os candidatos maiores continuam usando o buffer cache e
 o fallback existente; o limite de observação permanece em 4 KiB e os limites
 do ring e a sincronização Vulkan não mudam.
+
+## Motivos de encerramento do fast draw
+
+O limite de 256 B reduziu promoções em 86,5%, despromoções em 99,7% e o custo
+de CPU normalizado por mil draws em aproximadamente 9,8%. Na cena mais pesada,
+porém, cerca de 2.100 draws por quadro ainda iniciam uma nova sequência em vez
+de reutilizar a sequência rápida.
+
+Para investigar esse custo no core, sem depender de `TitleId`, GPU ou jogo, o
+log passa a registrar `fastDrawPassEnds`: streamout ativo, fim da fila de
+comandos, mudança de textura, mudança de contexto, mudança de sampler, comando
+Type-3 não suportado ou outro tipo de pacote. Esta etapa é somente diagnóstica
+e não amplia o fast path nem altera estado gráfico, sincronização ou fallback.

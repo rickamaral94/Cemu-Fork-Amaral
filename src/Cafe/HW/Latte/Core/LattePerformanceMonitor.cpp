@@ -141,7 +141,7 @@ void LattePerformanceMonitor_frameEnd()
 			if (fps < 28.0)
 			{
 				cemuLog_log(LogType::Force,
-					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={} renderPassReopensSameFboLastFrame={} bufferCache=[initialUploads:{},changedUploads:{},streamoutUploads:{},uploadKiB:{},pagesChecked:{},pagesChanged:{}] uploadSources=[vertex:{}/{},vsUniform:{}/{},gsUniform:{}/{},psUniform:{}/{},directVertex:{}/{}] directVertexClassifier=[probes:{},changes:{},promotions:{},demotions:{}] directVertexEligibility=[smallRequests:{},historyMisses:{},cacheHits:{},learningUploads:{},sameFrameUploads:{},ringRejects:{},oversizedUploads:{},oversizedKiB:{},historyResets:{}] directVertexPromotionSizes=[le256:{},le512:{},le1024:{},le2048:{},le4096:{}] directVertexBindSizes=[le256:{},le512:{},le1024:{},le2048:{},le4096:{}] renderPassEndsLastFrame=[submit:{},present:{},clear:{},textureTransfer:{},bufferTransfer:{},query:{},readback:{},fboTransition:{},other:{}]",
+					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={} renderPassReopensSameFboLastFrame={} bufferCache=[initialUploads:{},changedUploads:{},streamoutUploads:{},uploadKiB:{},pagesChecked:{},pagesChanged:{}] uploadSources=[vertex:{}/{},vsUniform:{}/{},gsUniform:{}/{},psUniform:{}/{},directVertex:{}/{}] directVertexClassifier=[probes:{},changes:{},promotions:{},demotions:{}] directVertexEligibility=[smallRequests:{},historyMisses:{},cacheHits:{},learningUploads:{},sameFrameUploads:{},ringRejects:{},oversizedUploads:{},oversizedKiB:{},historyResets:{}] directVertexPromotionSizes=[le256:{},le512:{},le1024:{},le2048:{},le4096:{}] directVertexBindSizes=[le256:{},le512:{},le1024:{},le2048:{},le4096:{}] fastDrawPassEnds=[streamout:{},queueEmpty:{},textureChange:{},contextChange:{},samplerChange:{},unsupportedType3:{},unsupportedPacket:{}] renderPassEndsLastFrame=[submit:{},present:{},clear:{},textureTransfer:{},bufferTransfer:{},query:{},readback:{},fboTransition:{},other:{}]",
 					fps, drawCallsPerFrame, fastDrawCallsPerFrame,
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime), rlps, tlps,
 					(performanceMonitor.stats.indexDataUploadPerFrame + 1023) / 1024,
@@ -198,6 +198,13 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numDirectVertexBindsLe1024PerFrame.get(),
 					performanceMonitor.vk.numDirectVertexBindsLe2048PerFrame.get(),
 					performanceMonitor.vk.numDirectVertexBindsLe4096PerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsStreamoutPerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsQueueEmptyPerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsTextureChangePerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextChangePerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.get(),
+					performanceMonitor.vk.numFastDrawPassEndsUnsupportedPacketPerFrame.get(),
 					performanceMonitor.vk.numRenderPassEndsSubmitPerFrame.get(),
 					performanceMonitor.vk.numRenderPassEndsPresentationPerFrame.get(),
 					performanceMonitor.vk.numRenderPassEndsClearPerFrame.get(),
@@ -270,4 +277,11 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.vk.numDirectVertexBindsLe1024PerFrame.reset();
 	performanceMonitor.vk.numDirectVertexBindsLe2048PerFrame.reset();
 	performanceMonitor.vk.numDirectVertexBindsLe4096PerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsStreamoutPerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsQueueEmptyPerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsTextureChangePerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsContextChangePerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.reset();
+	performanceMonitor.vk.numFastDrawPassEndsUnsupportedPacketPerFrame.reset();
 }

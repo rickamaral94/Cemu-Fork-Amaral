@@ -190,6 +190,13 @@ typedef struct
 		LattePerfStatCounter numDirectVertexBindsLe1024PerFrame;
 		LattePerfStatCounter numDirectVertexBindsLe2048PerFrame;
 		LattePerfStatCounter numDirectVertexBindsLe4096PerFrame;
+		LattePerfStatCounter numFastDrawPassEndsStreamoutPerFrame;
+		LattePerfStatCounter numFastDrawPassEndsQueueEmptyPerFrame;
+		LattePerfStatCounter numFastDrawPassEndsTextureChangePerFrame;
+		LattePerfStatCounter numFastDrawPassEndsContextChangePerFrame;
+		LattePerfStatCounter numFastDrawPassEndsSamplerChangePerFrame;
+		LattePerfStatCounter numFastDrawPassEndsUnsupportedType3PerFrame;
+		LattePerfStatCounter numFastDrawPassEndsUnsupportedPacketPerFrame;
 	}vk;
 
 	// calculated stats (per frame)

@@ -1020,6 +1020,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 	// quit early if there are parameters set which are generally incompatible with fast drawing
 	if (LatteGPUState.contextRegister[mmVGT_STRMOUT_EN] != 0)
 	{
+		performanceMonitor.vk.numFastDrawPassEndsStreamoutPerFrame.increment();
 		drawPassCtx.endDrawPass();
 		return;
 	}
@@ -1030,6 +1031,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 		LatteCMDPtr cmd, cmdStart, cmdEnd;
 		if (!drawPassCtx.PopCurrentCommandQueuePos(cmd, cmdStart, cmdEnd))
 		{
+			performanceMonitor.vk.numFastDrawPassEndsQueueEmptyPerFrame.increment();
 			drawPassCtx.endDrawPass();
 			return;
 		}
@@ -1057,6 +1059,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 								(registerStart >= Latte::REGADDR::SQ_TEX_RESOURCE_WORD0_N_VS && registerStart < (Latte::REGADDR::SQ_TEX_RESOURCE_WORD0_N_VS + Latte::GPU_LIMITS::NUM_TEXTURES_PER_STAGE * 7)) ||
 								(registerStart >= Latte::REGADDR::SQ_TEX_RESOURCE_WORD0_N_GS && registerStart < (Latte::REGADDR::SQ_TEX_RESOURCE_WORD0_N_GS + Latte::GPU_LIMITS::NUM_TEXTURES_PER_STAGE * 7)))
 							{
+								performanceMonitor.vk.numFastDrawPassEndsTextureChangePerFrame.increment();
 								drawPassCtx.endDrawPass(); // texture updates end the current draw sequence
 							}
 							else if (registerStart >= mmSQ_VTX_ATTRIBUTE_BLOCK_START && registerEnd <= mmSQ_VTX_ATTRIBUTE_BLOCK_END)
@@ -1130,6 +1133,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 					bool hasChanged = LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_CONTEXT>(cmdData, nWords, [](uint32 registerStart, uint32 registerEnd, bool regValuesChanged){});
 					if (hasChanged)
 					{
+						performanceMonitor.vk.numFastDrawPassEndsContextChangePerFrame.increment();
 						drawPassCtx.endDrawPass();
 						drawPassCtx.PushCurrentCommandQueuePos(cmd, cmdStart, cmdEnd);
 						return;
@@ -1149,6 +1153,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 					bool hasChanged = LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_SAMPLER>(cmdData, nWords, [](uint32 registerStart, uint32 registerEnd, bool regValuesChanged){});
 					if (hasChanged)
 					{
+						performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.increment();
 						drawPassCtx.endDrawPass();
 						drawPassCtx.PushCurrentCommandQueuePos(cmd, cmdStart, cmdEnd);
 						return;
@@ -1157,6 +1162,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 				}
 				default:
 					// unallowed command for fast draw
+					performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.increment();
 					drawPassCtx.endDrawPass();
 					drawPassCtx.PushCurrentCommandQueuePos(cmdBeforeCommand, cmdStart, cmdEnd);
 					return;
@@ -1169,6 +1175,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 			else
 			{
 				// unallowed command for fast draw
+				performanceMonitor.vk.numFastDrawPassEndsUnsupportedPacketPerFrame.increment();
 				drawPassCtx.endDrawPass();
 				drawPassCtx.PushCurrentCommandQueuePos(cmdBeforeCommand, cmdStart, cmdEnd);
 				return;
