@@ -270,6 +270,26 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numFastDrawPassEndsContextA22RegisterPerFrame[10].get(), performanceMonitor.vk.numFastDrawPassEndsContextA22RegisterPerFrame[11].get(),
 					performanceMonitor.vk.numFastDrawPassEndsContextA22RegisterPerFrame[12].get(), performanceMonitor.vk.numFastDrawPassEndsContextA22RegisterPerFrame[13].get(),
 					performanceMonitor.vk.numFastDrawPassEndsContextA22RegisterPerFrame[14].get(), performanceMonitor.vk.numFastDrawPassEndsContextA22RegisterPerFrame[15].get());
+				cemuLog_log(LogType::Force,
+					"Cemu fast draw changed A21 registers: a210={} a211={} a212={} a213={} a214={} a215={} a216={} a217={} a218={} a219={} a21a={} a21b={} a21c={} a21d={} a21e={} a21f={}",
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[0].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[1].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[2].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[3].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[4].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[5].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[6].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[7].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[8].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[9].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[10].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[11].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[12].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[13].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[14].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[15].get());
+				cemuLog_log(LogType::Force,
+					"Cemu fast draw changed A22 registers: a220={} a221={} a222={} a223={} a224={} a225={} a226={} a227={} a228={} a229={} a22a={} a22b={} a22c={} a22d={} a22e={} a22f={}",
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[16].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[17].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[18].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[19].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[20].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[21].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[22].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[23].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[24].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[25].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[26].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[27].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[28].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[29].get(),
+					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[30].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[31].get());
 			}
 		}
 	}
@@ -344,6 +364,8 @@ void LattePerformanceMonitor_frameBegin()
 	for (auto& counter : performanceMonitor.vk.numFastDrawPassEndsContextA21RegisterPerFrame)
 		counter.reset();
 	for (auto& counter : performanceMonitor.vk.numFastDrawPassEndsContextA22RegisterPerFrame)
+		counter.reset();
+	for (auto& counter : performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame)
 		counter.reset();
 	performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.reset();

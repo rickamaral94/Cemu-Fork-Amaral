@@ -372,8 +372,8 @@ LatteCMDPtr LatteCP_itSetRegistersGeneric(LatteCMDPtr cmd, uint32 nWords)
 }
 
 // similar to LatteCP_itSetRegistersGeneric, but calls a callback for every register range checked and returns true ONLY if any register value has actually changed (e.g. not updated to the same value as before)
-template<uint32 TRegisterBase, typename TRegRangeCallback>
-bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCallback cbRegRange)
+template<uint32 TRegisterBase, typename TRegRangeCallback, typename TRegChangeCallback>
+bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCallback cbRegRange, TRegChangeCallback cbRegChange)
 {
 	nWords--;
 	const uint32 registerOffset = LatteReadCMD();
@@ -395,7 +395,11 @@ bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCal
 			MPTR regShadowAddr = shadowAddrs[indexCounter];
 			if (regShadowAddr)
 				*(uint32*)(memory_base + regShadowAddr) = _swapEndianU32(dataWord);
-			hasRegChange |= (outputReg[indexCounter] != dataWord);
+			if (outputReg[indexCounter] != dataWord)
+			{
+				hasRegChange = true;
+				cbRegChange(registerIndex + indexCounter);
+			}
 			outputReg[indexCounter] = dataWord;
 			indexCounter++;
 		}
@@ -406,7 +410,11 @@ bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCal
 		if (nWords == 1) // common case
 		{
 			uint32 v = LatteReadCMD();
-			hasRegChange |= (*outputReg != v);
+			if (*outputReg != v)
+			{
+				hasRegChange = true;
+				cbRegChange(registerIndex);
+			}
 			*outputReg = v;
 		}
 		else
@@ -415,7 +423,11 @@ bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCal
 			while (i < nWords)
 			{
 				uint32 v = cmd[i];
-				hasRegChange |= (outputReg[i] != v);
+				if (outputReg[i] != v)
+				{
+					hasRegChange = true;
+					cbRegChange(registerIndex + i);
+				}
 				outputReg[i] = v;
 				i++;
 			}
@@ -427,6 +439,12 @@ bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCal
 	// callback
 	cbRegRange(registerStartIndex, registerEndIndex, hasRegChange);
 	return hasRegChange;
+}
+
+template<uint32 TRegisterBase, typename TRegRangeCallback>
+bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCallback cbRegRange)
+{
+	return LatteCP_itSetRegistersGeneric2<TRegisterBase>(cmd, nWords, cbRegRange, [](uint32) {});
 }
 
 LatteCMDPtr LatteCP_itIndexType(LatteCMDPtr cmd, uint32 nWords)
@@ -1147,6 +1165,10 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 								else if (a2BucketIndex == 2)
 									performanceMonitor.vk.numFastDrawPassEndsContextA22RegisterPerFrame[registerIndex].increment();
 							}
+						}, [](uint32 changedRegister)
+						{
+							if (changedRegister >= 0xA210 && changedRegister <= 0xA22F)
+								performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[changedRegister - 0xA210].increment();
 						});
 					if (hasChanged)
 					{

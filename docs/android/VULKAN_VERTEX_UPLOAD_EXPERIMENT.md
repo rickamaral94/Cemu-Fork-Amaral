@@ -217,3 +217,9 @@ faixas de geometria `A28x` a `A2Fx` permaneceram zeradas. O diagnóstico agora
 contabiliza o endereço inicial exato dos pacotes em `A210`–`A21F` e
 `A220`–`A22F`, regiões associadas a programas, recursos e anéis de shader.
 Nenhum registro é aceito pelo fast path nesta etapa.
+
+A captura seguinte mostrou que 88,24% das mudanças de contexto pertencem a
+pacotes iniciados em `A216` e `A225`. Como o endereço inicial não identifica
+qual palavra do pacote realmente mudou, o diagnóstico agora também contabiliza
+cada valor alterado entre `A210` e `A22F`. Isso separa endereços, tamanhos e
+recursos dos programas de shader sem ampliar o fast path ou alterar renderização.
