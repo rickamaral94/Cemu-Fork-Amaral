@@ -210,3 +210,10 @@ Uma captura sustentada com 1.092 quadros acima de 7.000 draws confirmou que
 6,99%. A próxima etapa subdivide exclusivamente `A2xx` em 16 faixas de 16
 registradores (`A20x` a `A2Fx`) para separar alterações de programa de shader
 das alterações de geometria/VGT. O caminho de execução permanece inalterado.
+
+Uma segunda captura sustentada, com 1.464 quadros acima de 7.000 draws,
+concentrou 40,08% das mudanças `A2xx` em `A21x` e 54,82% em `A22x`; todas as
+faixas de geometria `A28x` a `A2Fx` permaneceram zeradas. O diagnóstico agora
+contabiliza o endereço inicial exato dos pacotes em `A210`–`A21F` e
+`A220`–`A22F`, regiões associadas a programas, recursos e anéis de shader.
+Nenhum registro é aceito pelo fast path nesta etapa.

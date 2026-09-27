@@ -1141,6 +1141,11 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 							{
 								const uint32 a2BucketIndex = (contextOffset >> 4) & 0xF;
 								performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[a2BucketIndex].increment();
+								const uint32 registerIndex = contextOffset & 0xF;
+								if (a2BucketIndex == 1)
+									performanceMonitor.vk.numFastDrawPassEndsContextA21RegisterPerFrame[registerIndex].increment();
+								else if (a2BucketIndex == 2)
+									performanceMonitor.vk.numFastDrawPassEndsContextA22RegisterPerFrame[registerIndex].increment();
 							}
 						});
 					if (hasChanged)
