@@ -201,6 +201,14 @@ typedef struct
 		std::array<LattePerfStatCounter, 16> numFastDrawPassEndsContextA21RegisterPerFrame;
 		std::array<LattePerfStatCounter, 16> numFastDrawPassEndsContextA22RegisterPerFrame;
 		std::array<LattePerfStatCounter, 32> numFastDrawContextRegisterChangesPerFrame;
+		LattePerfStatCounter numVulkanDrawSequenceBeginsPerFrame;
+		LattePerfStatCounter numVulkanPipelineCacheQueriesPerFrame;
+		LattePerfStatCounter numVulkanPipelineCacheHitsPerFrame;
+		LattePerfStatCounter numVulkanPipelineCacheMissesPerFrame;
+		LattePerfStatCounter numVulkanPipelineReadyUsesPerFrame;
+		LattePerfStatCounter numVulkanPipelineUnavailableUsesPerFrame;
+		LattePerfStatCounter numVulkanPipelineBindsPerFrame;
+		LattePerfStatCounter numVulkanPipelineRedundantBindSkipsPerFrame;
 		LattePerfStatCounter numFastDrawPassEndsSamplerChangePerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedType3PerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedPacketPerFrame;

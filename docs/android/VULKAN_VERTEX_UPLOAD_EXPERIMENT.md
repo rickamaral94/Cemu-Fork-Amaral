@@ -223,3 +223,9 @@ pacotes iniciados em `A216` e `A225`. Como o endereço inicial não identifica
 qual palavra do pacote realmente mudou, o diagnóstico agora também contabiliza
 cada valor alterado entre `A210` e `A22F`. Isso separa endereços, tamanhos e
 recursos dos programas de shader sem ampliar o fast path ou alterar renderização.
+
+A contagem por palavra confirmou mudanças reais e frequentes nos endereços de
+vertex e fetch shader. Como o número de pipelines Vulkan permaneceu estável, o
+diagnóstico agora mede inícios de sequência, consultas e hits/misses do cache,
+pipelines disponíveis, binds reais e binds redundantes evitados. Esta etapa
+continua estritamente observacional e não altera seleção ou criação de pipeline.

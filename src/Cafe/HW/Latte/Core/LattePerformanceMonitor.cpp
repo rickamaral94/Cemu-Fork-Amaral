@@ -290,6 +290,16 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[26].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[27].get(),
 					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[28].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[29].get(),
 					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[30].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[31].get());
+				cemuLog_log(LogType::Force,
+					"Cemu Vulkan pipeline activity: sequenceBegins={} queries={} hits={} misses={} readyUses={} unavailableUses={} binds={} redundantBindSkips={}",
+					performanceMonitor.vk.numVulkanDrawSequenceBeginsPerFrame.get(),
+					performanceMonitor.vk.numVulkanPipelineCacheQueriesPerFrame.get(),
+					performanceMonitor.vk.numVulkanPipelineCacheHitsPerFrame.get(),
+					performanceMonitor.vk.numVulkanPipelineCacheMissesPerFrame.get(),
+					performanceMonitor.vk.numVulkanPipelineReadyUsesPerFrame.get(),
+					performanceMonitor.vk.numVulkanPipelineUnavailableUsesPerFrame.get(),
+					performanceMonitor.vk.numVulkanPipelineBindsPerFrame.get(),
+					performanceMonitor.vk.numVulkanPipelineRedundantBindSkipsPerFrame.get());
 			}
 		}
 	}
@@ -367,6 +377,14 @@ void LattePerformanceMonitor_frameBegin()
 		counter.reset();
 	for (auto& counter : performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame)
 		counter.reset();
+	performanceMonitor.vk.numVulkanDrawSequenceBeginsPerFrame.reset();
+	performanceMonitor.vk.numVulkanPipelineCacheQueriesPerFrame.reset();
+	performanceMonitor.vk.numVulkanPipelineCacheHitsPerFrame.reset();
+	performanceMonitor.vk.numVulkanPipelineCacheMissesPerFrame.reset();
+	performanceMonitor.vk.numVulkanPipelineReadyUsesPerFrame.reset();
+	performanceMonitor.vk.numVulkanPipelineUnavailableUsesPerFrame.reset();
+	performanceMonitor.vk.numVulkanPipelineBindsPerFrame.reset();
+	performanceMonitor.vk.numVulkanPipelineRedundantBindSkipsPerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsUnsupportedPacketPerFrame.reset();

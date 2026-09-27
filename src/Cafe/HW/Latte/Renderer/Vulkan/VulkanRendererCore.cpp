@@ -269,9 +269,11 @@ PipelineInfo* VulkanRenderer::draw_createGraphicsPipeline(uint32 indexCount)
 
 PipelineInfo* VulkanRenderer::draw_getOrCreateGraphicsPipeline(uint32 indexCount)
 {
+	performanceMonitor.vk.numVulkanPipelineCacheQueriesPerFrame.increment();
 	auto cache_object = draw_getCachedPipeline();
 	if (cache_object != nullptr)
 	{
+		performanceMonitor.vk.numVulkanPipelineCacheHitsPerFrame.increment();
 
 #ifdef CEMU_DEBUG_ASSERT
 		cemu_assert_debug(cache_object->vertexShader == LatteSHRC_GetActiveVertexShader());
@@ -291,6 +293,7 @@ PipelineInfo* VulkanRenderer::draw_getOrCreateGraphicsPipeline(uint32 indexCount
 		return cache_object;
 	}
 	//draw_debugPipelineHashState();
+	performanceMonitor.vk.numVulkanPipelineCacheMissesPerFrame.increment();
 
 	return draw_createGraphicsPipeline(indexCount);
 }
@@ -1344,6 +1347,7 @@ void VulkanRenderer::draw_handleSpecialState5()
 
 void VulkanRenderer::draw_beginSequence()
 {
+	performanceMonitor.vk.numVulkanDrawSequenceBeginsPerFrame.increment();
 	m_state.drawSequenceSkip = false;
 
 	bool streamoutEnable = LatteGPUState.contextRegister[mmVGT_STRMOUT_EN] != 0;
@@ -1494,10 +1498,12 @@ void VulkanRenderer::draw_execute_first(uint32 baseVertex, uint32 baseInstance, 
 	auto vkObjPipeline = pipeline_info->m_vkrObjPipeline;
 	if (vkObjPipeline->GetPipeline() == VK_NULL_HANDLE)
 	{
+		performanceMonitor.vk.numVulkanPipelineUnavailableUsesPerFrame.increment();
 		// invalid/uninitialized pipeline
 		m_state.activeVertexDS = nullptr;
 		return;
 	}
+	performanceMonitor.vk.numVulkanPipelineReadyUsesPerFrame.increment();
 
 	VkDescriptorSetInfo *vertexDS = nullptr, *pixelDS = nullptr, *geometryDS = nullptr;
 	draw_prepareDescriptorSets(pipeline_info, vertexDS, pixelDS, geometryDS);
@@ -1510,6 +1516,7 @@ void VulkanRenderer::draw_execute_first(uint32 baseVertex, uint32 baseInstance, 
 
 	if (m_state.currentPipeline != vkObjPipeline->GetPipeline())
 	{
+		performanceMonitor.vk.numVulkanPipelineBindsPerFrame.increment();
 		vkCmdBindPipeline(m_state.currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkObjPipeline->GetPipeline());
 		vkObjPipeline->flagForCurrentCommandBuffer();
 		m_state.currentPipeline = vkObjPipeline->GetPipeline();
@@ -1519,6 +1526,7 @@ void VulkanRenderer::draw_execute_first(uint32 baseVertex, uint32 baseInstance, 
 	}
 	else
 	{
+		performanceMonitor.vk.numVulkanPipelineRedundantBindSkipsPerFrame.increment();
 		if (pipeline_info->usesDepthBias)
 			draw_updateDepthBias(false);
 	}
@@ -1683,10 +1691,12 @@ void VulkanRenderer::draw_execute_continued(uint32 baseVertex, uint32 baseInstan
 	auto vkObjPipeline = pipeline_info->m_vkrObjPipeline;
 	if (vkObjPipeline->GetPipeline() == VK_NULL_HANDLE)
 	{
+		performanceMonitor.vk.numVulkanPipelineUnavailableUsesPerFrame.increment();
 		// invalid/uninitialized pipeline
 		//m_state.activeVertexDS = nullptr;
 		return;
 	}
+	performanceMonitor.vk.numVulkanPipelineReadyUsesPerFrame.increment();
 
 	VkDescriptorSetInfo *vertexDS = nullptr, *pixelDS = nullptr, *geometryDS = nullptr;
 	if (m_state.activeVertexDS)
@@ -1704,6 +1714,7 @@ void VulkanRenderer::draw_execute_continued(uint32 baseVertex, uint32 baseInstan
 
 	if (m_state.currentPipeline != vkObjPipeline->GetPipeline())
 	{
+		performanceMonitor.vk.numVulkanPipelineBindsPerFrame.increment();
 		vkCmdBindPipeline(m_state.currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkObjPipeline->GetPipeline());
 		vkObjPipeline->flagForCurrentCommandBuffer();
 		m_state.currentPipeline = vkObjPipeline->GetPipeline();
@@ -1713,6 +1724,7 @@ void VulkanRenderer::draw_execute_continued(uint32 baseVertex, uint32 baseInstan
 	}
 	else
 	{
+		performanceMonitor.vk.numVulkanPipelineRedundantBindSkipsPerFrame.increment();
 		if (pipeline_info->usesDepthBias)
 			draw_updateDepthBias(false);
 	}
