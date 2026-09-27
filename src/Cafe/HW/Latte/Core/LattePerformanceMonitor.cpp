@@ -232,6 +232,24 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numFastDrawPassEndsContextBucketPerFrame[13].get(),
 					performanceMonitor.vk.numFastDrawPassEndsContextBucketPerFrame[14].get(),
 					performanceMonitor.vk.numFastDrawPassEndsContextBucketPerFrame[15].get());
+				cemuLog_log(LogType::Force,
+					"Cemu fast draw context A2 buckets: a20x={} a21x={} a22x={} a23x={} a24x={} a25x={} a26x={} a27x={} a28x={} a29x={} a2ax={} a2bx={} a2cx={} a2dx={} a2ex={} a2fx={}",
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[0].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[1].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[2].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[3].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[4].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[5].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[6].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[7].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[8].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[9].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[10].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[11].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[12].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[13].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[14].get(),
+					performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[15].get());
 			}
 		}
 	}
@@ -300,6 +318,8 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.vk.numFastDrawPassEndsTextureChangePerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsContextChangePerFrame.reset();
 	for (auto& counter : performanceMonitor.vk.numFastDrawPassEndsContextBucketPerFrame)
+		counter.reset();
+	for (auto& counter : performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame)
 		counter.reset();
 	performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.reset();

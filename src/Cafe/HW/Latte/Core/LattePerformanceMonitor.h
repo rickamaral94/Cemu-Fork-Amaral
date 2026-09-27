@@ -197,6 +197,7 @@ typedef struct
 		LattePerfStatCounter numFastDrawPassEndsTextureChangePerFrame;
 		LattePerfStatCounter numFastDrawPassEndsContextChangePerFrame;
 		std::array<LattePerfStatCounter, 16> numFastDrawPassEndsContextBucketPerFrame;
+		std::array<LattePerfStatCounter, 16> numFastDrawPassEndsContextA2BucketPerFrame;
 		LattePerfStatCounter numFastDrawPassEndsSamplerChangePerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedType3PerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedPacketPerFrame;

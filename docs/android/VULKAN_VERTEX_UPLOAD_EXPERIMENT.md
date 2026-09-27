@@ -204,3 +204,9 @@ estado responsável sem adicionar custo de um histograma por registrador, o log
 agora divide o espaço de contexto em 16 faixas de 256 registradores (`A0xx` a
 `AFxx`). A contagem ocorre somente quando o valor escrito realmente mudou e
 continua sendo uma observação global do core, sem condição por jogo.
+
+Uma captura sustentada com 1.092 quadros acima de 7.000 draws confirmou que
+`A2xx` representa 92,80% das mudanças de contexto, seguida por `A1xx` com
+6,99%. A próxima etapa subdivide exclusivamente `A2xx` em 16 faixas de 16
+registradores (`A20x` a `A2Fx`) para separar alterações de programa de shader
+das alterações de geometria/VGT. O caminho de execução permanece inalterado.
