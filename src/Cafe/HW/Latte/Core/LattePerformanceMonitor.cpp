@@ -31,6 +31,9 @@ void LattePerformanceMonitor_frameEnd()
 	performanceMonitor.gpuTime_dcStageMRT.frameFinished();
 	performanceMonitor.gpuTime_dcStageDrawcallAPI.frameFinished();
 	performanceMonitor.gpuTime_waitForAsync.frameFinished();
+	performanceMonitor.vk.vulkanDrawSequenceBeginTime.frameFinished();
+	performanceMonitor.vk.vulkanPipelineCacheQueryTime.frameFinished();
+	performanceMonitor.vk.vulkanPipelineBindTime.frameFinished();
 
 	uint32 elapsedTime = GetTickCount() - performanceMonitor.cycle[performanceMonitor.cycleIndex].lastUpdate;
 	if (elapsedTime >= 1000)
@@ -291,7 +294,7 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[28].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[29].get(),
 					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[30].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[31].get());
 				cemuLog_log(LogType::Force,
-					"Cemu Vulkan pipeline activity: sequenceBegins={} queries={} hits={} misses={} readyUses={} unavailableUses={} binds={} redundantBindSkips={}",
+					"Cemu Vulkan pipeline activity: sequenceBegins={} queries={} hits={} misses={} readyUses={} unavailableUses={} binds={} redundantBindSkips={} sequenceBeginMs={:.3f} cacheQueryMs={:.3f} bindCallMs={:.3f}",
 					performanceMonitor.vk.numVulkanDrawSequenceBeginsPerFrame.get(),
 					performanceMonitor.vk.numVulkanPipelineCacheQueriesPerFrame.get(),
 					performanceMonitor.vk.numVulkanPipelineCacheHitsPerFrame.get(),
@@ -299,7 +302,10 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numVulkanPipelineReadyUsesPerFrame.get(),
 					performanceMonitor.vk.numVulkanPipelineUnavailableUsesPerFrame.get(),
 					performanceMonitor.vk.numVulkanPipelineBindsPerFrame.get(),
-					performanceMonitor.vk.numVulkanPipelineRedundantBindSkipsPerFrame.get());
+					performanceMonitor.vk.numVulkanPipelineRedundantBindSkipsPerFrame.get(),
+					TimerValueToMilliseconds(performanceMonitor.vk.vulkanDrawSequenceBeginTime),
+					TimerValueToMilliseconds(performanceMonitor.vk.vulkanPipelineCacheQueryTime),
+					TimerValueToMilliseconds(performanceMonitor.vk.vulkanPipelineBindTime));
 			}
 		}
 	}

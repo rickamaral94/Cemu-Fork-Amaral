@@ -269,6 +269,7 @@ PipelineInfo* VulkanRenderer::draw_createGraphicsPipeline(uint32 indexCount)
 
 PipelineInfo* VulkanRenderer::draw_getOrCreateGraphicsPipeline(uint32 indexCount)
 {
+	LattePerfStatTimerScope timerScope(performanceMonitor.vk.vulkanPipelineCacheQueryTime);
 	performanceMonitor.vk.numVulkanPipelineCacheQueriesPerFrame.increment();
 	auto cache_object = draw_getCachedPipeline();
 	if (cache_object != nullptr)
@@ -1347,6 +1348,7 @@ void VulkanRenderer::draw_handleSpecialState5()
 
 void VulkanRenderer::draw_beginSequence()
 {
+	LattePerfStatTimerScope timerScope(performanceMonitor.vk.vulkanDrawSequenceBeginTime);
 	performanceMonitor.vk.numVulkanDrawSequenceBeginsPerFrame.increment();
 	m_state.drawSequenceSkip = false;
 
@@ -1517,7 +1519,9 @@ void VulkanRenderer::draw_execute_first(uint32 baseVertex, uint32 baseInstance, 
 	if (m_state.currentPipeline != vkObjPipeline->GetPipeline())
 	{
 		performanceMonitor.vk.numVulkanPipelineBindsPerFrame.increment();
+		performanceMonitor.vk.vulkanPipelineBindTime.beginMeasuring();
 		vkCmdBindPipeline(m_state.currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkObjPipeline->GetPipeline());
+		performanceMonitor.vk.vulkanPipelineBindTime.endMeasuring();
 		vkObjPipeline->flagForCurrentCommandBuffer();
 		m_state.currentPipeline = vkObjPipeline->GetPipeline();
 		// depth bias
@@ -1715,7 +1719,9 @@ void VulkanRenderer::draw_execute_continued(uint32 baseVertex, uint32 baseInstan
 	if (m_state.currentPipeline != vkObjPipeline->GetPipeline())
 	{
 		performanceMonitor.vk.numVulkanPipelineBindsPerFrame.increment();
+		performanceMonitor.vk.vulkanPipelineBindTime.beginMeasuring();
 		vkCmdBindPipeline(m_state.currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkObjPipeline->GetPipeline());
+		performanceMonitor.vk.vulkanPipelineBindTime.endMeasuring();
 		vkObjPipeline->flagForCurrentCommandBuffer();
 		m_state.currentPipeline = vkObjPipeline->GetPipeline();
 		// depth bias

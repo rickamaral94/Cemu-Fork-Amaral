@@ -39,6 +39,23 @@ private:
 	uint64 timerStart{};
 };
 
+class LattePerfStatTimerScope
+{
+public:
+	explicit LattePerfStatTimerScope(LattePerfStatTimer& timer) : m_timer(timer)
+	{
+		m_timer.beginMeasuring();
+	}
+
+	~LattePerfStatTimerScope()
+	{
+		m_timer.endMeasuring();
+	}
+
+private:
+	LattePerfStatTimer& m_timer;
+};
+
 class LattePerfStatCounter
 {
 public:
@@ -209,6 +226,9 @@ typedef struct
 		LattePerfStatCounter numVulkanPipelineUnavailableUsesPerFrame;
 		LattePerfStatCounter numVulkanPipelineBindsPerFrame;
 		LattePerfStatCounter numVulkanPipelineRedundantBindSkipsPerFrame;
+		LattePerfStatTimer vulkanDrawSequenceBeginTime;
+		LattePerfStatTimer vulkanPipelineCacheQueryTime;
+		LattePerfStatTimer vulkanPipelineBindTime;
 		LattePerfStatCounter numFastDrawPassEndsSamplerChangePerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedType3PerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedPacketPerFrame;

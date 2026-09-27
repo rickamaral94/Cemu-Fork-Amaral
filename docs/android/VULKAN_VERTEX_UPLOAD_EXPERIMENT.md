@@ -229,3 +229,9 @@ vertex e fetch shader. Como o número de pipelines Vulkan permaneceu estável, o
 diagnóstico agora mede inícios de sequência, consultas e hits/misses do cache,
 pipelines disponíveis, binds reais e binds redundantes evitados. Esta etapa
 continua estritamente observacional e não altera seleção ou criação de pipeline.
+
+Com o cache aquecido, a cena pesada apresentou 100% de hits e nenhuma criação,
+apesar de cerca de dois mil reinícios de sequência por quadro. O diagnóstico
+agora acumula separadamente o tempo de CPU em início de sequência, consulta do
+cache e chamada de bind Vulkan. A medição usa o temporizador já existente no
+monitor de performance e não modifica decisões do renderer ou do driver.
