@@ -241,3 +241,29 @@ custo de CPU observado. Para separar o trabalho do renderer daquele realizado
 pelo processador de comandos, o monitor agora acumula o tempo total dos
 primeiros draws de cada sequência e dos draws contínuos. Nenhuma etapa interna
 é alterada e os dois caminhos continuam executando o código original.
+
+
+## Tempo ativo e espera por comandos
+
+A captura da build `5e2adce0-nightly` no mesmo Odin2 Portal, Turnip Amaral
+26.3.0-devel v4.7.3.1 e cena pesada da Ilha Taura forneceu 1.421 quadros
+estáveis acima de 7.000 draws. As medianas foram 19,88 FPS e 41,464 ms no
+intervalo monitorado entre apresentações. O primeiro draw de cada sequência
+somou 5,895 ms e os draws contínuos 1,478 ms, totalizando 7,498 ms. As 2.056
+consultas medianas ao cache de pipeline foram 100% hits; início de sequência,
+consulta do cache e bind consumiram 1,316 ms, 0,417 ms e 1,074 ms,
+respectivamente.
+
+A telemetria do Android manteve a GPU em 55,06% de uso mediano a 401 MHz, sem
+throttling, enquanto `OSSched[core=1]` ficou em 97,87% e `LatteThread` em
+45,54%. Portanto, cache, bind e corpo dos draws Vulkan não explicam sozinhos os
+aproximadamente 34 ms restantes do intervalo.
+
+O monitor já mede o tempo em que o processador de comandos espera novos dados,
+mas esse valor não era exportado. O diagnóstico agora registra
+`commandIdleMs` e `nonIdleMs` nas linhas de performance. Também encerra a
+medição quando um comando chega durante a segunda consulta do ringbuffer,
+evitando subcontagem nesse retorno rápido. A mudança é somente observacional:
+não altera parsing de comandos, estado gráfico, sincronização, renderer ou
+driver. A próxima captura separará espera pelo produtor PowerPC de trabalho
+ativo no processador de comandos antes de qualquer otimização.

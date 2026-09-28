@@ -127,6 +127,9 @@ void LattePerformanceMonitor_frameEnd()
 		}
 		else
 		{
+			const double renderFrameMs = TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime);
+			const double commandIdleMs = TimerValueToMilliseconds(performanceMonitor.gpuTime_idleTime);
+			const double nonIdleMs = std::max(renderFrameMs - commandIdleMs, 0.0);
 			const uint32 drawCallsPerFrame = drawCallCounter / elapsedFrames;
 			const uint32 fastDrawCallsPerFrame = fastDrawCallCounter / elapsedFrames;
 			LatteOverlay_updateStats(fps, drawCallsPerFrame, fastDrawCallsPerFrame);
@@ -136,9 +139,9 @@ void LattePerformanceMonitor_frameEnd()
 			{
 				s_lastTelemetryLog = now;
 				cemuLog_log(LogType::Force,
-					"Cemu performance telemetry: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} fenceWaitMs={:.3f} asyncWaitMs={:.3f} shaderCreateMs={:.3f}",
+					"Cemu performance telemetry: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} commandIdleMs={:.3f} nonIdleMs={:.3f} fenceWaitMs={:.3f} asyncWaitMs={:.3f} shaderCreateMs={:.3f}",
 					fps, drawCallsPerFrame, fastDrawCallsPerFrame,
-					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime),
+					renderFrameMs, commandIdleMs, nonIdleMs,
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_fenceTime),
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_waitForAsync),
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_shaderCreate));
@@ -146,9 +149,9 @@ void LattePerformanceMonitor_frameEnd()
 			if (fps < 28.0)
 			{
 				cemuLog_log(LogType::Force,
-					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={} renderPassReopensSameFboLastFrame={} bufferCache=[initialUploads:{},changedUploads:{},streamoutUploads:{},uploadKiB:{},pagesChecked:{},pagesChanged:{}] uploadSources=[vertex:{}/{},vsUniform:{}/{},gsUniform:{}/{},psUniform:{}/{},directVertex:{}/{}] directVertexClassifier=[probes:{},changes:{},promotions:{},demotions:{}] directVertexEligibility=[smallRequests:{},historyMisses:{},cacheHits:{},learningUploads:{},sameFrameUploads:{},ringRejects:{},oversizedUploads:{},oversizedKiB:{},historyResets:{}] directVertexPromotionSizes=[le256:{},le512:{},le1024:{},le2048:{},le4096:{}] directVertexBindSizes=[le256:{},le512:{},le1024:{},le2048:{},le4096:{}] fastDrawPassEnds=[streamout:{},queueEmpty:{},textureChange:{},contextChange:{},samplerChange:{},unsupportedType3:{},unsupportedPacket:{}] renderPassEndsLastFrame=[submit:{},present:{},clear:{},textureTransfer:{},bufferTransfer:{},query:{},readback:{},fboTransition:{},other:{}]",
+					"Cemu performance drop: fps={:.2f} drawCallsPerFrame={} fastDrawCallsPerFrame={} renderCpuMs={:.3f} commandIdleMs={:.3f} nonIdleMs={:.3f} recompilerLeavesPerSecond={} threadLeavesPerSecond={} indexUploadKiBPerFrame={} vkPipelines={} vkDescriptorSets={} vkImages={} vkImageViews={} vkRenderPasses={} vkFramebuffers={} barriersLastFrame={} inputTextureBarriersLastFrame={} renderPassLoadBarriersLastFrame={} skippedColorFeedbackBarriersLastFrame={} beginRenderPassesLastFrame={} renderPassFboChangesLastFrame={} renderPassSelfDependencySplitsLastFrame={} renderPassReopensSameFboLastFrame={} bufferCache=[initialUploads:{},changedUploads:{},streamoutUploads:{},uploadKiB:{},pagesChecked:{},pagesChanged:{}] uploadSources=[vertex:{}/{},vsUniform:{}/{},gsUniform:{}/{},psUniform:{}/{},directVertex:{}/{}] directVertexClassifier=[probes:{},changes:{},promotions:{},demotions:{}] directVertexEligibility=[smallRequests:{},historyMisses:{},cacheHits:{},learningUploads:{},sameFrameUploads:{},ringRejects:{},oversizedUploads:{},oversizedKiB:{},historyResets:{}] directVertexPromotionSizes=[le256:{},le512:{},le1024:{},le2048:{},le4096:{}] directVertexBindSizes=[le256:{},le512:{},le1024:{},le2048:{},le4096:{}] fastDrawPassEnds=[streamout:{},queueEmpty:{},textureChange:{},contextChange:{},samplerChange:{},unsupportedType3:{},unsupportedPacket:{}] renderPassEndsLastFrame=[submit:{},present:{},clear:{},textureTransfer:{},bufferTransfer:{},query:{},readback:{},fboTransition:{},other:{}]",
 					fps, drawCallsPerFrame, fastDrawCallsPerFrame,
-					TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime), rlps, tlps,
+					renderFrameMs, commandIdleMs, nonIdleMs, rlps, tlps,
 					(performanceMonitor.stats.indexDataUploadPerFrame + 1023) / 1024,
 					performanceMonitor.vk.numGraphicPipelines.get(),
 					performanceMonitor.vk.numDescriptorSets.get(),

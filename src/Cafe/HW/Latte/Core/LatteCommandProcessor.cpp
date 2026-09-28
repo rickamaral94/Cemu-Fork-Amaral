@@ -184,7 +184,10 @@ uint32 LatteCP_readU32Deprc()
 		LatteThread_HandleOSScreen(); // check if new frame was presented via OSScreen API
 
 		if ( TCL::TCLGPUReadRBWord(cmdWord) )
+		{
+			performanceMonitor.gpuTime_idleTime.endMeasuring();
 			return cmdWord;
+		}
 		if (Latte_GetStopSignal())
 			LatteThread_Exit();
 
