@@ -229,6 +229,8 @@ typedef struct
 		LattePerfStatTimer vulkanDrawSequenceBeginTime;
 		LattePerfStatTimer vulkanPipelineCacheQueryTime;
 		LattePerfStatTimer vulkanPipelineBindTime;
+		LattePerfStatTimer vulkanFirstDrawTime;
+		LattePerfStatTimer vulkanContinuedDrawTime;
 		LattePerfStatCounter numFastDrawPassEndsSamplerChangePerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedType3PerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedPacketPerFrame;

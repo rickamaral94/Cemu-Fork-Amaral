@@ -1811,6 +1811,8 @@ void VulkanRenderer::draw_execute_continued(uint32 baseVertex, uint32 baseInstan
 
 void VulkanRenderer::draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 instanceCount, uint32 count, MPTR indexDataMPTR, Latte::LATTE_VGT_DMA_INDEX_TYPE::E_INDEX_TYPE indexType, const LatteDrawcallContext& drawcallContext)
 {
+	LattePerfStatTimer& drawTimer = drawcallContext.isFirst ? performanceMonitor.vk.vulkanFirstDrawTime : performanceMonitor.vk.vulkanContinuedDrawTime;
+	LattePerfStatTimerScope timerScope(drawTimer);
 	if (drawcallContext.isFirst)
 		draw_execute_first(baseVertex, baseInstance, instanceCount, count, indexDataMPTR, indexType, drawcallContext);
 	else

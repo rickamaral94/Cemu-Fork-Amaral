@@ -235,3 +235,9 @@ apesar de cerca de dois mil reinícios de sequência por quadro. O diagnóstico
 agora acumula separadamente o tempo de CPU em início de sequência, consulta do
 cache e chamada de bind Vulkan. A medição usa o temporizador já existente no
 monitor de performance e não modifica decisões do renderer ou do driver.
+
+Os tempos de reinício, cache e bind representam apenas uma pequena parcela do
+custo de CPU observado. Para separar o trabalho do renderer daquele realizado
+pelo processador de comandos, o monitor agora acumula o tempo total dos
+primeiros draws de cada sequência e dos draws contínuos. Nenhuma etapa interna
+é alterada e os dois caminhos continuam executando o código original.

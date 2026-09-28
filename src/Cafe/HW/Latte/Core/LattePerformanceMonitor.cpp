@@ -34,6 +34,8 @@ void LattePerformanceMonitor_frameEnd()
 	performanceMonitor.vk.vulkanDrawSequenceBeginTime.frameFinished();
 	performanceMonitor.vk.vulkanPipelineCacheQueryTime.frameFinished();
 	performanceMonitor.vk.vulkanPipelineBindTime.frameFinished();
+	performanceMonitor.vk.vulkanFirstDrawTime.frameFinished();
+	performanceMonitor.vk.vulkanContinuedDrawTime.frameFinished();
 
 	uint32 elapsedTime = GetTickCount() - performanceMonitor.cycle[performanceMonitor.cycleIndex].lastUpdate;
 	if (elapsedTime >= 1000)
@@ -294,7 +296,7 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[28].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[29].get(),
 					performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[30].get(), performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[31].get());
 				cemuLog_log(LogType::Force,
-					"Cemu Vulkan pipeline activity: sequenceBegins={} queries={} hits={} misses={} readyUses={} unavailableUses={} binds={} redundantBindSkips={} sequenceBeginMs={:.3f} cacheQueryMs={:.3f} bindCallMs={:.3f}",
+					"Cemu Vulkan pipeline activity: sequenceBegins={} queries={} hits={} misses={} readyUses={} unavailableUses={} binds={} redundantBindSkips={} sequenceBeginMs={:.3f} cacheQueryMs={:.3f} bindCallMs={:.3f} firstDrawMs={:.3f} continuedDrawMs={:.3f}",
 					performanceMonitor.vk.numVulkanDrawSequenceBeginsPerFrame.get(),
 					performanceMonitor.vk.numVulkanPipelineCacheQueriesPerFrame.get(),
 					performanceMonitor.vk.numVulkanPipelineCacheHitsPerFrame.get(),
@@ -305,7 +307,9 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.vk.numVulkanPipelineRedundantBindSkipsPerFrame.get(),
 					TimerValueToMilliseconds(performanceMonitor.vk.vulkanDrawSequenceBeginTime),
 					TimerValueToMilliseconds(performanceMonitor.vk.vulkanPipelineCacheQueryTime),
-					TimerValueToMilliseconds(performanceMonitor.vk.vulkanPipelineBindTime));
+					TimerValueToMilliseconds(performanceMonitor.vk.vulkanPipelineBindTime),
+					TimerValueToMilliseconds(performanceMonitor.vk.vulkanFirstDrawTime),
+					TimerValueToMilliseconds(performanceMonitor.vk.vulkanContinuedDrawTime));
 			}
 		}
 	}
