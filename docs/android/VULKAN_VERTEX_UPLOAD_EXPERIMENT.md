@@ -296,3 +296,12 @@ The broad and detailed generic classifications share one opcode switch. The
 diagnostic additionally records SET versus LOAD traffic and payload-width
 buckets for the dominant context and resource families without inspecting
 register values.
+
+## Lazy renderer-sequence restart prototype
+
+The first command-processor optimization prototype keeps the specialized parser
+active after context, texture, or sampler changes. Such changes still end the
+current renderer draw sequence, but a replacement sequence is created lazily at
+the next draw, after every intervening state packet has been applied. Unsupported
+commands still fall back to the generic parser. This targets parser transitions,
+not game-specific state or a particular graphics driver.
