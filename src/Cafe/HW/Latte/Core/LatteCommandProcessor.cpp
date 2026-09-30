@@ -1209,6 +1209,11 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 				{
 				case IT_SET_RESOURCE: // attribute buffers, uniform buffers or texture units
 				{
+					if (!drawPassCtx.isWithinDrawPass())
+					{
+						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_RESOURCE>(cmdData, nWords);
+						break;
+					}
 					LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_RESOURCE>(cmdData, nWords, [&drawPassCtx](uint32 registerStart, uint32 registerEnd, bool regValuesChanged)
 						{
 							if (!regValuesChanged)
@@ -1248,6 +1253,11 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 				}
 				case IT_SET_ALU_CONST: // uniform register
 				{
+					if (!drawPassCtx.isWithinDrawPass())
+					{
+						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_ALU_CONST>(cmdData, nWords);
+						break;
+					}
 					LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_ALU_CONST>(cmdData, nWords, [&drawPassCtx](uint32 registerStart, uint32 registerEnd, bool regValuesChanged) {
 						if (!regValuesChanged || !drawPassCtx.isWithinDrawPass())
 							return;
@@ -1294,6 +1304,11 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 				}
 				case IT_SET_CONTEXT_REG:
 				{
+					if (!drawPassCtx.isWithinDrawPass())
+					{
+						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_CONTEXT>(cmdData, nWords);
+						break;
+					}
 					bool hasChanged = LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_CONTEXT>(cmdData, nWords, [&drawPassCtx](uint32 registerStart, uint32 registerEnd, bool regValuesChanged)
 						{
 							if (!regValuesChanged || !drawPassCtx.isWithinDrawPass())
@@ -1333,6 +1348,11 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 				}
 				case IT_SET_SAMPLER:
 				{
+					if (!drawPassCtx.isWithinDrawPass())
+					{
+						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_SAMPLER>(cmdData, nWords);
+						break;
+					}
 					bool hasChanged = LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_SAMPLER>(cmdData, nWords, [](uint32 registerStart, uint32 registerEnd, bool regValuesChanged){});
 					if (hasChanged && drawPassCtx.isWithinDrawPass())
 					{

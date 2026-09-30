@@ -305,3 +305,8 @@ current renderer draw sequence, but a replacement sequence is created lazily at
 the next draw, after every intervening state packet has been applied. Unsupported
 commands still fall back to the generic parser. This targets parser transitions,
 not game-specific state or a particular graphics driver.
+
+When the renderer sequence is already closed, context, resource, ALU constant,
+and sampler packets use the plain register setter. Incremental change detection
+and its callbacks are only useful while a live sequence can consume dirty-state
+masks; skipping them between sequences matches the generic parser semantics.
