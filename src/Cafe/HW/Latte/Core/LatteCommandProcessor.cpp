@@ -39,6 +39,46 @@ enum CommandPacketCategory : size_t
 	CP_CATEGORY_OTHER,
 };
 
+enum GenericRegisterCategory : size_t
+{
+	CP_REGISTER_CONTEXT = 0,
+	CP_REGISTER_RESOURCE,
+	CP_REGISTER_ALU_CONST,
+	CP_REGISTER_SAMPLER,
+	CP_REGISTER_CONFIG,
+	CP_REGISTER_CTL_LOOP,
+	CP_REGISTER_CATEGORY_COUNT,
+};
+
+GenericRegisterCategory ClassifyGenericRegisterPacket(uint32 itCode)
+{
+	switch (itCode)
+	{
+	case IT_SET_CONTEXT_REG:
+	case IT_SET_ALL_CONTEXTS:
+	case IT_LOAD_CONTEXT_REG:
+		return CP_REGISTER_CONTEXT;
+	case IT_SET_RESOURCE:
+	case IT_LOAD_RESOURCE:
+		return CP_REGISTER_RESOURCE;
+	case IT_SET_ALU_CONST:
+	case IT_LOAD_ALU_CONST:
+		return CP_REGISTER_ALU_CONST;
+	case IT_SET_SAMPLER:
+	case IT_LOAD_SAMPLER:
+		return CP_REGISTER_SAMPLER;
+	case IT_SET_CONFIG_REG:
+	case IT_LOAD_CONFIG_REG:
+		return CP_REGISTER_CONFIG;
+	case IT_SET_CTL_CONST:
+	case IT_SET_LOOP_CONST:
+	case IT_LOAD_LOOP_CONST:
+		return CP_REGISTER_CTL_LOOP;
+	default:
+		return CP_REGISTER_CATEGORY_COUNT;
+	}
+}
+
 CommandPacketCategory ClassifyContinuousPacket(uint32 itCode)
 {
 	switch (itCode)
@@ -1324,6 +1364,12 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 				uint32 nWords = ((itHeader >> 16) & 0x3FFF) + 1;
 				RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
 					performanceMonitor.commandProcessor.genericWords, ClassifyGenericPacket(itCode), nWords);
+				const GenericRegisterCategory registerCategory = ClassifyGenericRegisterPacket(itCode);
+				if (registerCategory != CP_REGISTER_CATEGORY_COUNT)
+				{
+					performanceMonitor.commandProcessor.genericRegisterPackets[registerCategory]++;
+					performanceMonitor.commandProcessor.genericRegisterWords[registerCategory] += nWords;
+				}
 				LatteCMDPtr cmdData = cmd;
 				cmd += nWords;
 				switch (itCode)

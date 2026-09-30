@@ -284,3 +284,10 @@ The following diagnostic revision adds packet and payload-word counts for five b
 categories in both the generic and continuous parsers. The counters run on the GPU
 thread and intentionally avoid atomics and per-packet timers. They identify the hot
 packet family while keeping the measured timings useful.
+# Generic register packet breakdown
+
+The command processor diagnostics split generic register traffic into context,
+resource, ALU constant, sampler, configuration, and control/loop families. The
+counters deliberately avoid per-packet timers: heavy Wii U scenes can execute
+tens of thousands of register packets per emulated frame, so timestamping each
+packet would perturb the workload being measured.

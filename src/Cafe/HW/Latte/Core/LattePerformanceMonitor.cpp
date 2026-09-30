@@ -334,6 +334,14 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.commandProcessor.genericPackets[2], performanceMonitor.commandProcessor.genericWords[2],
 					performanceMonitor.commandProcessor.genericPackets[3], performanceMonitor.commandProcessor.genericWords[3],
 					performanceMonitor.commandProcessor.genericPackets[4], performanceMonitor.commandProcessor.genericWords[4]);
+				cemuLog_log(LogType::Force,
+					"Cemu generic register packets: context={}/{} resource={}/{} aluConst={}/{} sampler={}/{} config={}/{} ctlLoop={}/{}",
+					performanceMonitor.commandProcessor.genericRegisterPackets[0], performanceMonitor.commandProcessor.genericRegisterWords[0],
+					performanceMonitor.commandProcessor.genericRegisterPackets[1], performanceMonitor.commandProcessor.genericRegisterWords[1],
+					performanceMonitor.commandProcessor.genericRegisterPackets[2], performanceMonitor.commandProcessor.genericRegisterWords[2],
+					performanceMonitor.commandProcessor.genericRegisterPackets[3], performanceMonitor.commandProcessor.genericRegisterWords[3],
+					performanceMonitor.commandProcessor.genericRegisterPackets[4], performanceMonitor.commandProcessor.genericRegisterWords[4],
+					performanceMonitor.commandProcessor.genericRegisterPackets[5], performanceMonitor.commandProcessor.genericRegisterWords[5]);
 			}
 		}
 	}
@@ -345,6 +353,8 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.commandProcessor.continuousWords.fill(0);
 	performanceMonitor.commandProcessor.genericPackets.fill(0);
 	performanceMonitor.commandProcessor.genericWords.fill(0);
+	performanceMonitor.commandProcessor.genericRegisterPackets.fill(0);
+	performanceMonitor.commandProcessor.genericRegisterWords.fill(0);
 	performanceMonitor.vk.numDrawBarriersPerFrame.reset();
 	performanceMonitor.vk.numInputTextureBarriersPerFrame.reset();
 	performanceMonitor.vk.numRenderPassLoadBarriersPerFrame.reset();
