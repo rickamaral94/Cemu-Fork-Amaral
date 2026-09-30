@@ -267,3 +267,15 @@ evitando subcontagem nesse retorno rápido. A mudança é somente observacional:
 não altera parsing de comandos, estado gráfico, sincronização, renderer ou
 driver. A próxima captura separará espera pelo produtor PowerPC de trabalho
 ativo no processador de comandos antes de qualquer otimização.
+### Command processor timing
+
+The Android diagnostics build also reports inclusive command processor timing:
+
+- `commandBufferMs`: indirect command-buffer processing, including renderer calls.
+- `continuousPassMs`: the optimized continuous draw parser, including continued draws.
+- `genericPathMs`: `commandBufferMs - continuousPassMs`.
+- `outsideCommandBufferMs`: active Latte time not accounted for by indirect command-buffer processing.
+
+The values deliberately use broad, low-frequency scopes. Existing `firstDrawMs` and
+`continuedDrawMs` can be subtracted during offline analysis without adding a timer to
+every packet. This keeps the diagnostic global and limits measurement overhead.

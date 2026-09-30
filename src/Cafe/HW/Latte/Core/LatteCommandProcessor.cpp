@@ -1037,6 +1037,7 @@ void LatteCP_dumpCommandBufferError(LatteCMDPtr cmdStart, LatteCMDPtr cmdEnd, La
 // we implement this optimization by having a specialized version of LatteCP_processCommandBuffer, called right after drawcalls, which only implements commands that dont interfere with fast drawing. Other commands will cause this function to return to the complex and generic parser
 void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCtx)
 {
+	LattePerfStatTimerScope timerScope(performanceMonitor.gpuTime_continuousDrawPass);
 	cemu_assert_debug(drawPassCtx.isWithinDrawPass());
 	// quit early if there are parameters set which are generally incompatible with fast drawing
 	if (LatteGPUState.contextRegister[mmVGT_STRMOUT_EN] != 0)
@@ -1230,6 +1231,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 
 void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 {
+	LattePerfStatTimerScope timerScope(performanceMonitor.gpuTime_commandBuffer);
 	while (true)
 	{
 		LatteCMDPtr cmd, cmdStart, cmdEnd;

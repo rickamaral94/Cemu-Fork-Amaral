@@ -14,16 +14,31 @@ public:
 	void beginMeasuring()
 	{
 		timerStart = PPCTimer_getRawTsc();
+		isMeasuring = true;
 	}
 
 	void endMeasuring()
 	{
 		uint64 dif = PPCTimer_getRawTsc() - timerStart;
 		currentSum += dif;
+		isMeasuring = false;
 	}
 
 	void frameFinished()
 	{
+		previousFrame = currentSum;
+		currentSum = 0;
+	}
+
+	// Use for broad scopes which may remain active when presentation closes a frame.
+	void frameFinishedIncludingActive()
+	{
+		if (isMeasuring)
+		{
+			const uint64 now = PPCTimer_getRawTsc();
+			currentSum += now - timerStart;
+			timerStart = now;
+		}
 		previousFrame = currentSum;
 		currentSum = 0;
 	}
@@ -37,6 +52,7 @@ private:
 	uint64 currentSum{};
 	uint64 previousFrame{};
 	uint64 timerStart{};
+	bool isMeasuring{};
 };
 
 class LattePerfStatTimerScope
@@ -122,6 +138,8 @@ typedef struct
 	LattePerfStatTimer gpuTime_frameTime;
 	LattePerfStatTimer gpuTime_shaderCreate;
 	LattePerfStatTimer gpuTime_idleTime; // time spent waiting for new commands from CPU
+	LattePerfStatTimer gpuTime_commandBuffer; // time spent processing indirect command buffers, including draw execution
+	LattePerfStatTimer gpuTime_continuousDrawPass; // inclusive time in the optimized continuous draw parser
 	LattePerfStatTimer gpuTime_fenceTime; // time spent waiting for fence condition
 
 	LattePerfStatTimer gpuTime_dcStageTextures; // drawcall texture/mrt setup

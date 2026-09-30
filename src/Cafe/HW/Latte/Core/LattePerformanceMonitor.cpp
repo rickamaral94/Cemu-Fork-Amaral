@@ -22,6 +22,8 @@ void LattePerformanceMonitor_frameEnd()
 	performanceMonitor.gpuTime_shaderCreate.frameFinished();
 	performanceMonitor.gpuTime_frameTime.frameFinished();
 	performanceMonitor.gpuTime_idleTime.frameFinished();
+	performanceMonitor.gpuTime_commandBuffer.frameFinishedIncludingActive();
+	performanceMonitor.gpuTime_continuousDrawPass.frameFinishedIncludingActive();
 	performanceMonitor.gpuTime_fenceTime.frameFinished();
 
 	performanceMonitor.gpuTime_dcStageTextures.frameFinished();
@@ -130,6 +132,10 @@ void LattePerformanceMonitor_frameEnd()
 			const double renderFrameMs = TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime);
 			const double commandIdleMs = TimerValueToMilliseconds(performanceMonitor.gpuTime_idleTime);
 			const double nonIdleMs = std::max(renderFrameMs - commandIdleMs, 0.0);
+			const double commandBufferMs = TimerValueToMilliseconds(performanceMonitor.gpuTime_commandBuffer);
+			const double continuousPassMs = TimerValueToMilliseconds(performanceMonitor.gpuTime_continuousDrawPass);
+			const double outsideCommandBufferMs = std::max(nonIdleMs - commandBufferMs, 0.0);
+			const double genericPathMs = std::max(commandBufferMs - continuousPassMs, 0.0);
 			const uint32 drawCallsPerFrame = drawCallCounter / elapsedFrames;
 			const uint32 fastDrawCallsPerFrame = fastDrawCallCounter / elapsedFrames;
 			LatteOverlay_updateStats(fps, drawCallsPerFrame, fastDrawCallsPerFrame);
@@ -313,6 +319,9 @@ void LattePerformanceMonitor_frameEnd()
 					TimerValueToMilliseconds(performanceMonitor.vk.vulkanPipelineBindTime),
 					TimerValueToMilliseconds(performanceMonitor.vk.vulkanFirstDrawTime),
 					TimerValueToMilliseconds(performanceMonitor.vk.vulkanContinuedDrawTime));
+				cemuLog_log(LogType::Force,
+					"Cemu command processor timing: nonIdleMs={:.3f} commandBufferMs={:.3f} continuousPassMs={:.3f} genericPathMs={:.3f} outsideCommandBufferMs={:.3f}",
+					nonIdleMs, commandBufferMs, continuousPassMs, genericPathMs, outsideCommandBufferMs);
 			}
 		}
 	}
