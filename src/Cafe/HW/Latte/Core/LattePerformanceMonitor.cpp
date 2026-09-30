@@ -322,6 +322,18 @@ void LattePerformanceMonitor_frameEnd()
 				cemuLog_log(LogType::Force,
 					"Cemu command processor timing: nonIdleMs={:.3f} commandBufferMs={:.3f} continuousPassMs={:.3f} genericPathMs={:.3f} outsideCommandBufferMs={:.3f}",
 					nonIdleMs, commandBufferMs, continuousPassMs, genericPathMs, outsideCommandBufferMs);
+				cemuLog_log(LogType::Force,
+					"Cemu command processor packets: continuous=[resource:{}/{},aluConst:{}/{},context:{}/{},draw:{}/{},other:{}/{}] generic=[registers:{}/{},waitSync:{}/{},transfer:{}/{},draw:{}/{},other:{}/{}]",
+					performanceMonitor.commandProcessor.continuousPackets[0], performanceMonitor.commandProcessor.continuousWords[0],
+					performanceMonitor.commandProcessor.continuousPackets[1], performanceMonitor.commandProcessor.continuousWords[1],
+					performanceMonitor.commandProcessor.continuousPackets[2], performanceMonitor.commandProcessor.continuousWords[2],
+					performanceMonitor.commandProcessor.continuousPackets[3], performanceMonitor.commandProcessor.continuousWords[3],
+					performanceMonitor.commandProcessor.continuousPackets[4], performanceMonitor.commandProcessor.continuousWords[4],
+					performanceMonitor.commandProcessor.genericPackets[0], performanceMonitor.commandProcessor.genericWords[0],
+					performanceMonitor.commandProcessor.genericPackets[1], performanceMonitor.commandProcessor.genericWords[1],
+					performanceMonitor.commandProcessor.genericPackets[2], performanceMonitor.commandProcessor.genericWords[2],
+					performanceMonitor.commandProcessor.genericPackets[3], performanceMonitor.commandProcessor.genericWords[3],
+					performanceMonitor.commandProcessor.genericPackets[4], performanceMonitor.commandProcessor.genericWords[4]);
 			}
 		}
 	}
@@ -329,6 +341,10 @@ void LattePerformanceMonitor_frameEnd()
 
 void LattePerformanceMonitor_frameBegin()
 {
+	performanceMonitor.commandProcessor.continuousPackets.fill(0);
+	performanceMonitor.commandProcessor.continuousWords.fill(0);
+	performanceMonitor.commandProcessor.genericPackets.fill(0);
+	performanceMonitor.commandProcessor.genericWords.fill(0);
 	performanceMonitor.vk.numDrawBarriersPerFrame.reset();
 	performanceMonitor.vk.numInputTextureBarriersPerFrame.reset();
 	performanceMonitor.vk.numRenderPassLoadBarriersPerFrame.reset();

@@ -142,6 +142,16 @@ typedef struct
 	LattePerfStatTimer gpuTime_continuousDrawPass; // inclusive time in the optimized continuous draw parser
 	LattePerfStatTimer gpuTime_fenceTime; // time spent waiting for fence condition
 
+	struct
+	{
+		// Packet categories are defined in LatteCommandProcessor.cpp. These are
+		// GPU-thread-only diagnostic counters, so atomics would only add noise.
+		std::array<uint32, 5> continuousPackets{};
+		std::array<uint32, 5> continuousWords{};
+		std::array<uint32, 5> genericPackets{};
+		std::array<uint32, 5> genericWords{};
+	}commandProcessor;
+
 	LattePerfStatTimer gpuTime_dcStageTextures; // drawcall texture/mrt setup
 	LattePerfStatTimer gpuTime_dcStageVertexMgr; // drawcall vertex setup and upload
 	LattePerfStatTimer gpuTime_dcStageShaderAndUniformMgr; // drawcall shader setup and uniform management/upload

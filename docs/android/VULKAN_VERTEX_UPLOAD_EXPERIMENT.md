@@ -279,3 +279,8 @@ The Android diagnostics build also reports inclusive command processor timing:
 The values deliberately use broad, low-frequency scopes. Existing `firstDrawMs` and
 `continuedDrawMs` can be subtracted during offline analysis without adding a timer to
 every packet. This keeps the diagnostic global and limits measurement overhead.
+
+The following diagnostic revision adds packet and payload-word counts for five broad
+categories in both the generic and continuous parsers. The counters run on the GPU
+thread and intentionally avoid atomics and per-packet timers. They identify the hot
+packet family while keeping the measured timings useful.

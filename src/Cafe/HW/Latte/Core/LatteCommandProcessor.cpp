@@ -28,6 +28,80 @@ typedef uint32be* LatteCMDPtr;
 #define LatteReadCMD() ((uint32)*(cmd++))
 #define LatteSkipCMD(_nWords) cmd += (_nWords)
 
+namespace
+{
+enum CommandPacketCategory : size_t
+{
+	CP_CATEGORY_PRIMARY = 0,
+	CP_CATEGORY_SECONDARY,
+	CP_CATEGORY_TERTIARY,
+	CP_CATEGORY_DRAW,
+	CP_CATEGORY_OTHER,
+};
+
+CommandPacketCategory ClassifyContinuousPacket(uint32 itCode)
+{
+	switch (itCode)
+	{
+	case IT_SET_RESOURCE:
+		return CP_CATEGORY_PRIMARY;
+	case IT_SET_ALU_CONST:
+		return CP_CATEGORY_SECONDARY;
+	case IT_SET_CONTEXT_REG:
+		return CP_CATEGORY_TERTIARY;
+	case IT_DRAW_INDEX_2:
+		return CP_CATEGORY_DRAW;
+	default:
+		return CP_CATEGORY_OTHER;
+	}
+}
+
+CommandPacketCategory ClassifyGenericPacket(uint32 itCode)
+{
+	switch (itCode)
+	{
+	case IT_SET_CONTEXT_REG:
+	case IT_SET_ALL_CONTEXTS:
+	case IT_SET_RESOURCE:
+	case IT_SET_ALU_CONST:
+	case IT_SET_CTL_CONST:
+	case IT_SET_SAMPLER:
+	case IT_SET_CONFIG_REG:
+	case IT_SET_LOOP_CONST:
+	case IT_LOAD_CONFIG_REG:
+	case IT_LOAD_CONTEXT_REG:
+	case IT_LOAD_ALU_CONST:
+	case IT_LOAD_LOOP_CONST:
+	case IT_LOAD_RESOURCE:
+	case IT_LOAD_SAMPLER:
+		return CP_CATEGORY_PRIMARY;
+	case IT_WAIT_REG_MEM:
+	case IT_MEM_SEMAPHORE:
+	case IT_SURFACE_SYNC:
+	case IT_HLE_TRIGGER_SCANBUFFER_SWAP:
+	case IT_HLE_WAIT_FOR_FLIP:
+	case IT_HLE_SYNC_ASYNC_OPERATIONS:
+		return CP_CATEGORY_SECONDARY;
+	case IT_HLE_COPY_COLORBUFFER_TO_SCANBUFFER:
+	case IT_HLE_CLEAR_COLOR_DEPTH_STENCIL:
+	case IT_HLE_COPY_SURFACE_NEW:
+		return CP_CATEGORY_TERTIARY;
+	case IT_DRAW_INDEX_2:
+	case IT_DRAW_INDEX_AUTO:
+	case IT_DRAW_INDEX_IMMD:
+		return CP_CATEGORY_DRAW;
+	default:
+		return CP_CATEGORY_OTHER;
+	}
+}
+
+void RecordCommandPacket(std::array<uint32, 5>& packets, std::array<uint32, 5>& words, CommandPacketCategory category, uint32 nWords)
+{
+	packets[category]++;
+	words[category] += nWords;
+}
+}
+
 void LatteThread_HandleOSScreen();
 
 void LatteThread_Exit();
@@ -1067,6 +1141,8 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 			{
 				uint32 itCode = (itHeader >> 8) & 0xFF;
 				uint32 nWords = ((itHeader >> 16) & 0x3FFF) + 1;
+				RecordCommandPacket(performanceMonitor.commandProcessor.continuousPackets,
+					performanceMonitor.commandProcessor.continuousWords, ClassifyContinuousPacket(itCode), nWords);
 				LatteCMDPtr cmdData = cmd;
 				cmd += nWords;
 				switch (itCode)
@@ -1246,6 +1322,8 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 			{
 				uint32 itCode = (itHeader >> 8) & 0xFF;
 				uint32 nWords = ((itHeader >> 16) & 0x3FFF) + 1;
+				RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
+					performanceMonitor.commandProcessor.genericWords, ClassifyGenericPacket(itCode), nWords);
 				LatteCMDPtr cmdData = cmd;
 				cmd += nWords;
 				switch (itCode)
