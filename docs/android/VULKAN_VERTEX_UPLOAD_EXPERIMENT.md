@@ -297,16 +297,22 @@ diagnostic additionally records SET versus LOAD traffic and payload-width
 buckets for the dominant context and resource families without inspecting
 register values.
 
-## Lazy renderer-sequence restart prototype
+## Lazy renderer-sequence restart prototype rejected
 
-The first command-processor optimization prototype keeps the specialized parser
-active after context, texture, or sampler changes. Such changes still end the
-current renderer draw sequence, but a replacement sequence is created lazily at
-the next draw, after every intervening state packet has been applied. Unsupported
-commands still fall back to the generic parser. This targets parser transitions,
-not game-specific state or a particular graphics driver.
+The first command-processor optimization prototype kept the specialized parser
+active after context, texture, or sampler changes and opened the replacement
+renderer sequence lazily at the next draw. A follow-up also used the plain
+register setter while no renderer sequence was active.
 
-When the renderer sequence is already closed, context, resource, ALU constant,
-and sampler packets use the plain register setter. Incremental change detection
-and its callbacks are only useful while a live sequence can consume dirty-state
-masks; skipping them between sequences matches the generic parser semantics.
+The Odin2 Portal validation produced 540 heavy-scene performance samples with at
+least 7,000 draws and 1,080 matching command-processor timing samples. The
+medians were 20.04 FPS, 40.288 ms of render CPU time, 31.530 ms of active command
+processor time, and 41.231 ms inside indirect command buffers. Generic register
+traffic fell to 1,966 packets per frame, but the continuous parser rose to
+21.610 ms and total performance did not improve over the pre-prototype capture.
+
+GPU utilization remained about 55% at 401 MHz, thermal status stayed at zero,
+and the pipeline cache remained warm. The result therefore indicates cost
+migration between parsers rather than a Turnip or thermal bottleneck. Both
+behavioral changes were removed; the packet and timing diagnostics remain so a
+future optimization can target actual work instead of parser ownership.
