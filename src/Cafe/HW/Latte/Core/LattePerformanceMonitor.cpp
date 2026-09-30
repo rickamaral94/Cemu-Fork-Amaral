@@ -342,6 +342,15 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.commandProcessor.genericRegisterPackets[3], performanceMonitor.commandProcessor.genericRegisterWords[3],
 					performanceMonitor.commandProcessor.genericRegisterPackets[4], performanceMonitor.commandProcessor.genericRegisterWords[4],
 					performanceMonitor.commandProcessor.genericRegisterPackets[5], performanceMonitor.commandProcessor.genericRegisterWords[5]);
+				cemuLog_log(LogType::Force,
+					"Cemu generic register shape: loads=[context:{},resource:{},aluConst:{},sampler:{},config:{},ctlLoop:{}] contextWidth=[1:{},2to4:{},5to8:{},9plus:{}] resourceWidth=[1:{},2to4:{},5to8:{},9plus:{}]",
+					performanceMonitor.commandProcessor.genericRegisterLoadPackets[0], performanceMonitor.commandProcessor.genericRegisterLoadPackets[1],
+					performanceMonitor.commandProcessor.genericRegisterLoadPackets[2], performanceMonitor.commandProcessor.genericRegisterLoadPackets[3],
+					performanceMonitor.commandProcessor.genericRegisterLoadPackets[4], performanceMonitor.commandProcessor.genericRegisterLoadPackets[5],
+					performanceMonitor.commandProcessor.genericRegisterWidthPackets[0][0], performanceMonitor.commandProcessor.genericRegisterWidthPackets[0][1],
+					performanceMonitor.commandProcessor.genericRegisterWidthPackets[0][2], performanceMonitor.commandProcessor.genericRegisterWidthPackets[0][3],
+					performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][0], performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][1],
+					performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][2], performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][3]);
 			}
 		}
 	}
@@ -355,6 +364,9 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.commandProcessor.genericWords.fill(0);
 	performanceMonitor.commandProcessor.genericRegisterPackets.fill(0);
 	performanceMonitor.commandProcessor.genericRegisterWords.fill(0);
+	performanceMonitor.commandProcessor.genericRegisterLoadPackets.fill(0);
+	for (auto& widthPackets : performanceMonitor.commandProcessor.genericRegisterWidthPackets)
+		widthPackets.fill(0);
 	performanceMonitor.vk.numDrawBarriersPerFrame.reset();
 	performanceMonitor.vk.numInputTextureBarriersPerFrame.reset();
 	performanceMonitor.vk.numRenderPassLoadBarriersPerFrame.reset();

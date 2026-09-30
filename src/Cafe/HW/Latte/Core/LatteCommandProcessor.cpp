@@ -50,33 +50,19 @@ enum GenericRegisterCategory : size_t
 	CP_REGISTER_CATEGORY_COUNT,
 };
 
-GenericRegisterCategory ClassifyGenericRegisterPacket(uint32 itCode)
+void RecordCommandPacket(std::array<uint32, 5>& packets, std::array<uint32, 5>& words, CommandPacketCategory category, uint32 nWords);
+
+void RecordGenericRegisterPacket(GenericRegisterCategory category, uint32 nWords, bool isLoad)
 {
-	switch (itCode)
-	{
-	case IT_SET_CONTEXT_REG:
-	case IT_SET_ALL_CONTEXTS:
-	case IT_LOAD_CONTEXT_REG:
-		return CP_REGISTER_CONTEXT;
-	case IT_SET_RESOURCE:
-	case IT_LOAD_RESOURCE:
-		return CP_REGISTER_RESOURCE;
-	case IT_SET_ALU_CONST:
-	case IT_LOAD_ALU_CONST:
-		return CP_REGISTER_ALU_CONST;
-	case IT_SET_SAMPLER:
-	case IT_LOAD_SAMPLER:
-		return CP_REGISTER_SAMPLER;
-	case IT_SET_CONFIG_REG:
-	case IT_LOAD_CONFIG_REG:
-		return CP_REGISTER_CONFIG;
-	case IT_SET_CTL_CONST:
-	case IT_SET_LOOP_CONST:
-	case IT_LOAD_LOOP_CONST:
-		return CP_REGISTER_CTL_LOOP;
-	default:
-		return CP_REGISTER_CATEGORY_COUNT;
-	}
+	auto& commandProcessor = performanceMonitor.commandProcessor;
+	commandProcessor.genericPackets[CP_CATEGORY_PRIMARY]++;
+	commandProcessor.genericWords[CP_CATEGORY_PRIMARY] += nWords;
+	commandProcessor.genericRegisterPackets[category]++;
+	commandProcessor.genericRegisterWords[category] += nWords;
+	commandProcessor.genericRegisterLoadPackets[category] += isLoad ? 1 : 0;
+	const uint32 payloadWords = nWords > 0 ? nWords - 1 : 0;
+	const size_t widthBucket = payloadWords <= 1 ? 0 : payloadWords <= 4 ? 1 : payloadWords <= 8 ? 2 : 3;
+	commandProcessor.genericRegisterWidthPackets[category][widthBucket]++;
 }
 
 CommandPacketCategory ClassifyContinuousPacket(uint32 itCode)
@@ -96,42 +82,73 @@ CommandPacketCategory ClassifyContinuousPacket(uint32 itCode)
 	}
 }
 
-CommandPacketCategory ClassifyGenericPacket(uint32 itCode)
+void RecordGenericCommandPacket(uint32 itCode, uint32 nWords)
 {
 	switch (itCode)
 	{
 	case IT_SET_CONTEXT_REG:
 	case IT_SET_ALL_CONTEXTS:
-	case IT_SET_RESOURCE:
-	case IT_SET_ALU_CONST:
-	case IT_SET_CTL_CONST:
-	case IT_SET_SAMPLER:
-	case IT_SET_CONFIG_REG:
-	case IT_SET_LOOP_CONST:
-	case IT_LOAD_CONFIG_REG:
+		RecordGenericRegisterPacket(CP_REGISTER_CONTEXT, nWords, false);
+		return;
 	case IT_LOAD_CONTEXT_REG:
-	case IT_LOAD_ALU_CONST:
-	case IT_LOAD_LOOP_CONST:
+		RecordGenericRegisterPacket(CP_REGISTER_CONTEXT, nWords, true);
+		return;
+	case IT_SET_RESOURCE:
+		RecordGenericRegisterPacket(CP_REGISTER_RESOURCE, nWords, false);
+		return;
 	case IT_LOAD_RESOURCE:
+		RecordGenericRegisterPacket(CP_REGISTER_RESOURCE, nWords, true);
+		return;
+	case IT_SET_ALU_CONST:
+		RecordGenericRegisterPacket(CP_REGISTER_ALU_CONST, nWords, false);
+		return;
+	case IT_LOAD_ALU_CONST:
+		RecordGenericRegisterPacket(CP_REGISTER_ALU_CONST, nWords, true);
+		return;
+	case IT_SET_CTL_CONST:
+	case IT_SET_LOOP_CONST:
+		RecordGenericRegisterPacket(CP_REGISTER_CTL_LOOP, nWords, false);
+		return;
+	case IT_LOAD_LOOP_CONST:
+		RecordGenericRegisterPacket(CP_REGISTER_CTL_LOOP, nWords, true);
+		return;
+	case IT_SET_SAMPLER:
+		RecordGenericRegisterPacket(CP_REGISTER_SAMPLER, nWords, false);
+		return;
 	case IT_LOAD_SAMPLER:
-		return CP_CATEGORY_PRIMARY;
+		RecordGenericRegisterPacket(CP_REGISTER_SAMPLER, nWords, true);
+		return;
+	case IT_SET_CONFIG_REG:
+		RecordGenericRegisterPacket(CP_REGISTER_CONFIG, nWords, false);
+		return;
+	case IT_LOAD_CONFIG_REG:
+		RecordGenericRegisterPacket(CP_REGISTER_CONFIG, nWords, true);
+		return;
 	case IT_WAIT_REG_MEM:
 	case IT_MEM_SEMAPHORE:
 	case IT_SURFACE_SYNC:
 	case IT_HLE_TRIGGER_SCANBUFFER_SWAP:
 	case IT_HLE_WAIT_FOR_FLIP:
 	case IT_HLE_SYNC_ASYNC_OPERATIONS:
-		return CP_CATEGORY_SECONDARY;
+		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
+			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_SECONDARY, nWords);
+		return;
 	case IT_HLE_COPY_COLORBUFFER_TO_SCANBUFFER:
 	case IT_HLE_CLEAR_COLOR_DEPTH_STENCIL:
 	case IT_HLE_COPY_SURFACE_NEW:
-		return CP_CATEGORY_TERTIARY;
+		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
+			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_TERTIARY, nWords);
+		return;
 	case IT_DRAW_INDEX_2:
 	case IT_DRAW_INDEX_AUTO:
 	case IT_DRAW_INDEX_IMMD:
-		return CP_CATEGORY_DRAW;
+		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
+			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_DRAW, nWords);
+		return;
 	default:
-		return CP_CATEGORY_OTHER;
+		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
+			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_OTHER, nWords);
+		return;
 	}
 }
 
@@ -1362,14 +1379,7 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 			{
 				uint32 itCode = (itHeader >> 8) & 0xFF;
 				uint32 nWords = ((itHeader >> 16) & 0x3FFF) + 1;
-				RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
-					performanceMonitor.commandProcessor.genericWords, ClassifyGenericPacket(itCode), nWords);
-				const GenericRegisterCategory registerCategory = ClassifyGenericRegisterPacket(itCode);
-				if (registerCategory != CP_REGISTER_CATEGORY_COUNT)
-				{
-					performanceMonitor.commandProcessor.genericRegisterPackets[registerCategory]++;
-					performanceMonitor.commandProcessor.genericRegisterWords[registerCategory] += nWords;
-				}
+				RecordGenericCommandPacket(itCode, nWords);
 				LatteCMDPtr cmdData = cmd;
 				cmd += nWords;
 				switch (itCode)

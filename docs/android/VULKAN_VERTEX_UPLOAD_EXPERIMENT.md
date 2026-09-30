@@ -291,3 +291,8 @@ resource, ALU constant, sampler, configuration, and control/loop families. The
 counters deliberately avoid per-packet timers: heavy Wii U scenes can execute
 tens of thousands of register packets per emulated frame, so timestamping each
 packet would perturb the workload being measured.
+
+The broad and detailed generic classifications share one opcode switch. The
+diagnostic additionally records SET versus LOAD traffic and payload-width
+buckets for the dominant context and resource families without inspecting
+register values.

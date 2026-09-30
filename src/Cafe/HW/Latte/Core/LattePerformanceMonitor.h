@@ -152,6 +152,8 @@ typedef struct
 		std::array<uint32, 5> genericWords{};
 		std::array<uint32, 6> genericRegisterPackets{};
 		std::array<uint32, 6> genericRegisterWords{};
+		std::array<uint32, 6> genericRegisterLoadPackets{};
+		std::array<std::array<uint32, 4>, 6> genericRegisterWidthPackets{};
 	}commandProcessor;
 
 	LattePerfStatTimer gpuTime_dcStageTextures; // drawcall texture/mrt setup
