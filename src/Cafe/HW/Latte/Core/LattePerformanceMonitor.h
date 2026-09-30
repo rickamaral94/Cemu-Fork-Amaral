@@ -154,6 +154,12 @@ typedef struct
 		std::array<uint32, 6> genericRegisterWords{};
 		std::array<uint32, 6> genericRegisterLoadPackets{};
 		std::array<std::array<uint32, 4>, 6> genericRegisterWidthPackets{};
+		// Sample one out of every 64 generic SET-register handlers. The sequence
+		// remains continuous across frames to avoid repeatedly sampling the same
+		// packet position; sums and counts are per-frame.
+		std::array<uint32, 6> genericRegisterSampleSequence{};
+		std::array<uint32, 6> genericRegisterTimeSamples{};
+		std::array<uint64, 6> genericRegisterSampleCycles{};
 	}commandProcessor;
 
 	LattePerfStatTimer gpuTime_dcStageTextures; // drawcall texture/mrt setup

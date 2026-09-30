@@ -52,6 +52,22 @@ enum GenericRegisterCategory : size_t
 
 void RecordCommandPacket(std::array<uint32, 5>& packets, std::array<uint32, 5>& words, CommandPacketCategory category, uint32 nWords);
 
+template<typename THandler>
+void SampleGenericRegisterHandler(GenericRegisterCategory category, THandler handler)
+{
+	auto& commandProcessor = performanceMonitor.commandProcessor;
+	const bool takeSample = (++commandProcessor.genericRegisterSampleSequence[category] & 63) == 0;
+	if (!takeSample)
+	{
+		handler();
+		return;
+	}
+	const uint64 start = PPCTimer_getRawTsc();
+	handler();
+	commandProcessor.genericRegisterSampleCycles[category] += PPCTimer_getRawTsc() - start;
+	commandProcessor.genericRegisterTimeSamples[category]++;
+}
+
 void RecordGenericRegisterPacket(GenericRegisterCategory category, uint32 nWords, bool isLoad)
 {
 	auto& commandProcessor = performanceMonitor.commandProcessor;
@@ -1387,32 +1403,44 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 				case IT_SET_CONTEXT_REG:
 				case IT_SET_ALL_CONTEXTS:
 				{
-					LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_CONTEXT>(cmdData, nWords);
+					SampleGenericRegisterHandler(CP_REGISTER_CONTEXT, [&]() {
+						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_CONTEXT>(cmdData, nWords);
+					});
 				}
 				break;
 				case IT_SET_RESOURCE:
 				{
-					LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_RESOURCE>(cmdData, nWords);
+					SampleGenericRegisterHandler(CP_REGISTER_RESOURCE, [&]() {
+						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_RESOURCE>(cmdData, nWords);
+					});
 				}
 				break;
 				case IT_SET_ALU_CONST:
 				{
-					LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_ALU_CONST>(cmdData, nWords);
+					SampleGenericRegisterHandler(CP_REGISTER_ALU_CONST, [&]() {
+						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_ALU_CONST>(cmdData, nWords);
+					});
 				}
 				break;
 				case IT_SET_CTL_CONST:
 				{
-					LatteCP_itSetRegistersGeneric<mmSQ_VTX_BASE_VTX_LOC>(cmdData, nWords);
+					SampleGenericRegisterHandler(CP_REGISTER_CTL_LOOP, [&]() {
+						LatteCP_itSetRegistersGeneric<mmSQ_VTX_BASE_VTX_LOC>(cmdData, nWords);
+					});
 				}
 				break;
 				case IT_SET_SAMPLER:
 				{
-					LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_SAMPLER>(cmdData, nWords);
+					SampleGenericRegisterHandler(CP_REGISTER_SAMPLER, [&]() {
+						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_SAMPLER>(cmdData, nWords);
+					});
 				}
 				break;
 				case IT_SET_CONFIG_REG:
 				{
-					LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_CONFIG>(cmdData, nWords);
+					SampleGenericRegisterHandler(CP_REGISTER_CONFIG, [&]() {
+						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_CONFIG>(cmdData, nWords);
+					});
 				}
 				break;
 				case IT_SET_LOOP_CONST:

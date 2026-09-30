@@ -316,3 +316,16 @@ and the pipeline cache remained warm. The result therefore indicates cost
 migration between parsers rather than a Turnip or thermal bottleneck. Both
 behavioral changes were removed; the packet and timing diagnostics remain so a
 future optimization can target actual work instead of parser ownership.
+
+The post-revert capture confirmed the decision across 272 heavy-scene samples:
+20.04 FPS, 39.427 ms render CPU time, and 31.450 ms active command-processor
+time. The generic parser again handled about 40,191 register packets and 2,024
+draws per frame, while total active time remained effectively unchanged.
+
+The next diagnostic samples one out of every 64 generic SET-register handlers
+and reports an estimated time for context, resource, ALU constant, sampler,
+configuration, and control/loop families. Sampling sequences continue across
+frame boundaries so the same packet position is not selected every frame. This
+does not alter register state, parser transitions, renderer behavior, or driver
+synchronization; it only identifies whether the high register-packet count is
+material to the remaining generic-path time.
