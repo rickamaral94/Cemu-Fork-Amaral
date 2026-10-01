@@ -343,3 +343,15 @@ handlers because there are only about nine per frame. Register and draw
 categories are not timed by this sampler; first-draw execution already has a
 separate broad timer. The sampling is observational and does not alter command
 ordering, wait behavior, transfers, renderer state, or driver synchronization.
+
+In 1,038 heavy-scene handler samples, miscellaneous commands accounted for only
+0.144 ms and wait/synchronization had a 0.072 ms median. Infrequent wait samples
+captured real blocking intervals, which become exaggerated by the 1/8 estimator
+and are not continuous CPU work. The nine transfer handlers were the only
+material family at 3.153 ms per frame.
+
+The broad sampler was removed. The next diagnostic times every one of those nine
+transfers and separates color-buffer-to-scanbuffer copies, color/depth clears,
+and surface copies. Nine timer pairs per heavy frame are sufficiently sparse to
+avoid sampling error while identifying the operation responsible before any
+transfer or synchronization behavior is changed.

@@ -15,10 +15,6 @@ double TimerValueToMilliseconds(LattePerfStatTimer& timer)
 	return static_cast<double>(PPCTimer_tscToMicroseconds(timer.getPreviousFrameValue())) / 1000.0;
 }
 
-double SampledCyclesToEstimatedMilliseconds(uint64 cycles, uint32 rate)
-{
-	return static_cast<double>(PPCTimer_tscToMicroseconds(cycles)) * rate / 1000.0;
-}
 }
 
 void LattePerformanceMonitor_frameEnd()
@@ -29,6 +25,8 @@ void LattePerformanceMonitor_frameEnd()
 	performanceMonitor.gpuTime_idleTime.frameFinished();
 	performanceMonitor.gpuTime_commandBuffer.frameFinishedIncludingActive();
 	performanceMonitor.gpuTime_continuousDrawPass.frameFinishedIncludingActive();
+	for (auto& transferTime : performanceMonitor.commandProcessor.genericTransferTime)
+		transferTime.frameFinished();
 	performanceMonitor.gpuTime_fenceTime.frameFinished();
 
 	performanceMonitor.gpuTime_dcStageTextures.frameFinished();
@@ -357,13 +355,13 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][0], performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][1],
 					performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][2], performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][3]);
 				cemuLog_log(LogType::Force,
-					"Cemu generic handler sampled time: estimatedMs=[waitSync:{:.3f},transfer:{:.3f},other:{:.3f}] rates=[waitSync:1/8,transfer:1/1,other:1/16] samples=[waitSync:{},transfer:{},other:{}]",
-					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericHandlerSampleCycles[1], 8),
-					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericHandlerSampleCycles[2], 1),
-					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericHandlerSampleCycles[4], 16),
-					performanceMonitor.commandProcessor.genericHandlerTimeSamples[1],
-					performanceMonitor.commandProcessor.genericHandlerTimeSamples[2],
-					performanceMonitor.commandProcessor.genericHandlerTimeSamples[4]);
+					"Cemu generic transfer timing: scanbuffer={}/{:.3f} clear={}/{:.3f} surfaceCopy={}/{:.3f}",
+					performanceMonitor.commandProcessor.genericTransferPackets[0],
+					TimerValueToMilliseconds(performanceMonitor.commandProcessor.genericTransferTime[0]),
+					performanceMonitor.commandProcessor.genericTransferPackets[1],
+					TimerValueToMilliseconds(performanceMonitor.commandProcessor.genericTransferTime[1]),
+					performanceMonitor.commandProcessor.genericTransferPackets[2],
+					TimerValueToMilliseconds(performanceMonitor.commandProcessor.genericTransferTime[2]));
 			}
 		}
 	}
@@ -378,8 +376,7 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.commandProcessor.genericRegisterPackets.fill(0);
 	performanceMonitor.commandProcessor.genericRegisterWords.fill(0);
 	performanceMonitor.commandProcessor.genericRegisterLoadPackets.fill(0);
-	performanceMonitor.commandProcessor.genericHandlerTimeSamples.fill(0);
-	performanceMonitor.commandProcessor.genericHandlerSampleCycles.fill(0);
+	performanceMonitor.commandProcessor.genericTransferPackets.fill(0);
 	for (auto& widthPackets : performanceMonitor.commandProcessor.genericRegisterWidthPackets)
 		widthPackets.fill(0);
 	performanceMonitor.vk.numDrawBarriersPerFrame.reset();

@@ -52,37 +52,6 @@ enum GenericRegisterCategory : size_t
 
 void RecordCommandPacket(std::array<uint32, 5>& packets, std::array<uint32, 5>& words, CommandPacketCategory category, uint32 nWords);
 
-constexpr std::array<uint32, 5> kGenericHandlerSampleRates{ 0, 8, 1, 0, 16 };
-
-class GenericHandlerSampleScope
-{
-public:
-	explicit GenericHandlerSampleScope(CommandPacketCategory category) : m_category(category)
-	{
-		const uint32 rate = kGenericHandlerSampleRates[category];
-		if (rate == 0)
-			return;
-		auto& sequence = performanceMonitor.commandProcessor.genericHandlerSampleSequence[category];
-		m_active = (++sequence % rate) == 0;
-		if (m_active)
-			m_start = PPCTimer_getRawTsc();
-	}
-
-	~GenericHandlerSampleScope()
-	{
-		if (!m_active)
-			return;
-		auto& commandProcessor = performanceMonitor.commandProcessor;
-		commandProcessor.genericHandlerSampleCycles[m_category] += PPCTimer_getRawTsc() - m_start;
-		commandProcessor.genericHandlerTimeSamples[m_category]++;
-	}
-
-private:
-	CommandPacketCategory m_category;
-	uint64 m_start{};
-	bool m_active{};
-};
-
 void RecordGenericRegisterPacket(GenericRegisterCategory category, uint32 nWords, bool isLoad)
 {
 	auto& commandProcessor = performanceMonitor.commandProcessor;
@@ -1410,10 +1379,9 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 			{
 				uint32 itCode = (itHeader >> 8) & 0xFF;
 				uint32 nWords = ((itHeader >> 16) & 0x3FFF) + 1;
-				const CommandPacketCategory packetCategory = RecordGenericCommandPacket(itCode, nWords);
+				RecordGenericCommandPacket(itCode, nWords);
 				LatteCMDPtr cmdData = cmd;
 				cmd += nWords;
-				GenericHandlerSampleScope handlerSampleScope(packetCategory);
 				switch (itCode)
 				{
 				case IT_SET_CONTEXT_REG:
@@ -1573,6 +1541,8 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 				}
 				case IT_HLE_COPY_COLORBUFFER_TO_SCANBUFFER:
 				{
+					LattePerfStatTimerScope transferTimer(performanceMonitor.commandProcessor.genericTransferTime[0]);
+					performanceMonitor.commandProcessor.genericTransferPackets[0]++;
 					LatteCP_itHLECopyColorBufferToScanBuffer(cmdData, nWords);
 					break;
 				}
@@ -1595,11 +1565,15 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 				}
 				case IT_HLE_CLEAR_COLOR_DEPTH_STENCIL:
 				{
+					LattePerfStatTimerScope transferTimer(performanceMonitor.commandProcessor.genericTransferTime[1]);
+					performanceMonitor.commandProcessor.genericTransferPackets[1]++;
 					LatteCP_itHLEClearColorDepthStencil(cmdData, nWords);
 					break;
 				}
 				case IT_HLE_COPY_SURFACE_NEW:
 				{
+					LattePerfStatTimerScope transferTimer(performanceMonitor.commandProcessor.genericTransferTime[2]);
+					performanceMonitor.commandProcessor.genericTransferPackets[2]++;
 					LatteCP_itHLECopySurfaceNew(cmdData, nWords);
 					break;
 				}

@@ -154,11 +154,8 @@ typedef struct
 		std::array<uint32, 6> genericRegisterWords{};
 		std::array<uint32, 6> genericRegisterLoadPackets{};
 		std::array<std::array<uint32, 4>, 6> genericRegisterWidthPackets{};
-		// Low-frequency timing for generic wait/sync, transfer, and other command
-		// handlers. Sequences continue across frames to avoid positional bias.
-		std::array<uint32, 5> genericHandlerSampleSequence{};
-		std::array<uint32, 5> genericHandlerTimeSamples{};
-		std::array<uint64, 5> genericHandlerSampleCycles{};
+		std::array<uint32, 3> genericTransferPackets{};
+		std::array<LattePerfStatTimer, 3> genericTransferTime{};
 	}commandProcessor;
 
 	LattePerfStatTimer gpuTime_dcStageTextures; // drawcall texture/mrt setup
