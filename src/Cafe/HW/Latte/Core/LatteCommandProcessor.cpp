@@ -52,21 +52,36 @@ enum GenericRegisterCategory : size_t
 
 void RecordCommandPacket(std::array<uint32, 5>& packets, std::array<uint32, 5>& words, CommandPacketCategory category, uint32 nWords);
 
-template<typename THandler>
-void SampleGenericRegisterHandler(GenericRegisterCategory category, THandler handler)
+constexpr std::array<uint32, 5> kGenericHandlerSampleRates{ 0, 8, 1, 0, 16 };
+
+class GenericHandlerSampleScope
 {
-	auto& commandProcessor = performanceMonitor.commandProcessor;
-	const bool takeSample = (++commandProcessor.genericRegisterSampleSequence[category] & 63) == 0;
-	if (!takeSample)
+public:
+	explicit GenericHandlerSampleScope(CommandPacketCategory category) : m_category(category)
 	{
-		handler();
-		return;
+		const uint32 rate = kGenericHandlerSampleRates[category];
+		if (rate == 0)
+			return;
+		auto& sequence = performanceMonitor.commandProcessor.genericHandlerSampleSequence[category];
+		m_active = (++sequence % rate) == 0;
+		if (m_active)
+			m_start = PPCTimer_getRawTsc();
 	}
-	const uint64 start = PPCTimer_getRawTsc();
-	handler();
-	commandProcessor.genericRegisterSampleCycles[category] += PPCTimer_getRawTsc() - start;
-	commandProcessor.genericRegisterTimeSamples[category]++;
-}
+
+	~GenericHandlerSampleScope()
+	{
+		if (!m_active)
+			return;
+		auto& commandProcessor = performanceMonitor.commandProcessor;
+		commandProcessor.genericHandlerSampleCycles[m_category] += PPCTimer_getRawTsc() - m_start;
+		commandProcessor.genericHandlerTimeSamples[m_category]++;
+	}
+
+private:
+	CommandPacketCategory m_category;
+	uint64 m_start{};
+	bool m_active{};
+};
 
 void RecordGenericRegisterPacket(GenericRegisterCategory category, uint32 nWords, bool isLoad)
 {
@@ -98,48 +113,48 @@ CommandPacketCategory ClassifyContinuousPacket(uint32 itCode)
 	}
 }
 
-void RecordGenericCommandPacket(uint32 itCode, uint32 nWords)
+CommandPacketCategory RecordGenericCommandPacket(uint32 itCode, uint32 nWords)
 {
 	switch (itCode)
 	{
 	case IT_SET_CONTEXT_REG:
 	case IT_SET_ALL_CONTEXTS:
 		RecordGenericRegisterPacket(CP_REGISTER_CONTEXT, nWords, false);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_LOAD_CONTEXT_REG:
 		RecordGenericRegisterPacket(CP_REGISTER_CONTEXT, nWords, true);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_SET_RESOURCE:
 		RecordGenericRegisterPacket(CP_REGISTER_RESOURCE, nWords, false);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_LOAD_RESOURCE:
 		RecordGenericRegisterPacket(CP_REGISTER_RESOURCE, nWords, true);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_SET_ALU_CONST:
 		RecordGenericRegisterPacket(CP_REGISTER_ALU_CONST, nWords, false);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_LOAD_ALU_CONST:
 		RecordGenericRegisterPacket(CP_REGISTER_ALU_CONST, nWords, true);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_SET_CTL_CONST:
 	case IT_SET_LOOP_CONST:
 		RecordGenericRegisterPacket(CP_REGISTER_CTL_LOOP, nWords, false);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_LOAD_LOOP_CONST:
 		RecordGenericRegisterPacket(CP_REGISTER_CTL_LOOP, nWords, true);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_SET_SAMPLER:
 		RecordGenericRegisterPacket(CP_REGISTER_SAMPLER, nWords, false);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_LOAD_SAMPLER:
 		RecordGenericRegisterPacket(CP_REGISTER_SAMPLER, nWords, true);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_SET_CONFIG_REG:
 		RecordGenericRegisterPacket(CP_REGISTER_CONFIG, nWords, false);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_LOAD_CONFIG_REG:
 		RecordGenericRegisterPacket(CP_REGISTER_CONFIG, nWords, true);
-		return;
+		return CP_CATEGORY_PRIMARY;
 	case IT_WAIT_REG_MEM:
 	case IT_MEM_SEMAPHORE:
 	case IT_SURFACE_SYNC:
@@ -148,23 +163,23 @@ void RecordGenericCommandPacket(uint32 itCode, uint32 nWords)
 	case IT_HLE_SYNC_ASYNC_OPERATIONS:
 		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
 			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_SECONDARY, nWords);
-		return;
+		return CP_CATEGORY_SECONDARY;
 	case IT_HLE_COPY_COLORBUFFER_TO_SCANBUFFER:
 	case IT_HLE_CLEAR_COLOR_DEPTH_STENCIL:
 	case IT_HLE_COPY_SURFACE_NEW:
 		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
 			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_TERTIARY, nWords);
-		return;
+		return CP_CATEGORY_TERTIARY;
 	case IT_DRAW_INDEX_2:
 	case IT_DRAW_INDEX_AUTO:
 	case IT_DRAW_INDEX_IMMD:
 		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
 			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_DRAW, nWords);
-		return;
+		return CP_CATEGORY_DRAW;
 	default:
 		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
 			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_OTHER, nWords);
-		return;
+		return CP_CATEGORY_OTHER;
 	}
 }
 
@@ -1395,52 +1410,41 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 			{
 				uint32 itCode = (itHeader >> 8) & 0xFF;
 				uint32 nWords = ((itHeader >> 16) & 0x3FFF) + 1;
-				RecordGenericCommandPacket(itCode, nWords);
+				const CommandPacketCategory packetCategory = RecordGenericCommandPacket(itCode, nWords);
 				LatteCMDPtr cmdData = cmd;
 				cmd += nWords;
+				GenericHandlerSampleScope handlerSampleScope(packetCategory);
 				switch (itCode)
 				{
 				case IT_SET_CONTEXT_REG:
 				case IT_SET_ALL_CONTEXTS:
 				{
-					SampleGenericRegisterHandler(CP_REGISTER_CONTEXT, [&]() {
-						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_CONTEXT>(cmdData, nWords);
-					});
+					LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_CONTEXT>(cmdData, nWords);
 				}
 				break;
 				case IT_SET_RESOURCE:
 				{
-					SampleGenericRegisterHandler(CP_REGISTER_RESOURCE, [&]() {
-						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_RESOURCE>(cmdData, nWords);
-					});
+					LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_RESOURCE>(cmdData, nWords);
 				}
 				break;
 				case IT_SET_ALU_CONST:
 				{
-					SampleGenericRegisterHandler(CP_REGISTER_ALU_CONST, [&]() {
-						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_ALU_CONST>(cmdData, nWords);
-					});
+					LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_ALU_CONST>(cmdData, nWords);
 				}
 				break;
 				case IT_SET_CTL_CONST:
 				{
-					SampleGenericRegisterHandler(CP_REGISTER_CTL_LOOP, [&]() {
-						LatteCP_itSetRegistersGeneric<mmSQ_VTX_BASE_VTX_LOC>(cmdData, nWords);
-					});
+					LatteCP_itSetRegistersGeneric<mmSQ_VTX_BASE_VTX_LOC>(cmdData, nWords);
 				}
 				break;
 				case IT_SET_SAMPLER:
 				{
-					SampleGenericRegisterHandler(CP_REGISTER_SAMPLER, [&]() {
-						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_SAMPLER>(cmdData, nWords);
-					});
+					LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_SAMPLER>(cmdData, nWords);
 				}
 				break;
 				case IT_SET_CONFIG_REG:
 				{
-					SampleGenericRegisterHandler(CP_REGISTER_CONFIG, [&]() {
-						LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_CONFIG>(cmdData, nWords);
-					});
+					LatteCP_itSetRegistersGeneric<LATTE_REG_BASE_CONFIG>(cmdData, nWords);
 				}
 				break;
 				case IT_SET_LOOP_CONST:

@@ -329,3 +329,17 @@ frame boundaries so the same packet position is not selected every frame. This
 does not alter register state, parser transitions, renderer behavior, or driver
 synchronization; it only identifies whether the high register-packet count is
 material to the remaining generic-path time.
+
+Across 1,020 heavy-scene samples, all six SET-register families accounted for
+an estimated median of only 1.344 ms: 0.960 ms for context, 0.256 ms for
+resources, 0.064 ms each for configuration and control/loop, and effectively
+zero for ALU constants and samplers at the timer resolution. This is about 5.4%
+of the 25.072 ms generic-path median, so register copying is not a useful
+optimization target. The temporary register-handler sampler was removed.
+
+The following diagnostic instead samples generic wait/synchronization handlers
+at 1/8 and miscellaneous handlers at 1/16, while measuring all transfer
+handlers because there are only about nine per frame. Register and draw
+categories are not timed by this sampler; first-draw execution already has a
+separate broad timer. The sampling is observational and does not alter command
+ordering, wait behavior, transfers, renderer state, or driver synchronization.

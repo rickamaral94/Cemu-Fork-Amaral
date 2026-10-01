@@ -15,9 +15,9 @@ double TimerValueToMilliseconds(LattePerfStatTimer& timer)
 	return static_cast<double>(PPCTimer_tscToMicroseconds(timer.getPreviousFrameValue())) / 1000.0;
 }
 
-double SampledCyclesToEstimatedMilliseconds(uint64 cycles)
+double SampledCyclesToEstimatedMilliseconds(uint64 cycles, uint32 rate)
 {
-	return static_cast<double>(PPCTimer_tscToMicroseconds(cycles)) * 64.0 / 1000.0;
+	return static_cast<double>(PPCTimer_tscToMicroseconds(cycles)) * rate / 1000.0;
 }
 }
 
@@ -357,16 +357,13 @@ void LattePerformanceMonitor_frameEnd()
 					performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][0], performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][1],
 					performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][2], performanceMonitor.commandProcessor.genericRegisterWidthPackets[1][3]);
 				cemuLog_log(LogType::Force,
-					"Cemu generic register sampled time: rate=1/64 estimatedMs=[context:{:.3f},resource:{:.3f},aluConst:{:.3f},sampler:{:.3f},config:{:.3f},ctlLoop:{:.3f}] samples=[context:{},resource:{},aluConst:{},sampler:{},config:{},ctlLoop:{}]",
-					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericRegisterSampleCycles[0]),
-					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericRegisterSampleCycles[1]),
-					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericRegisterSampleCycles[2]),
-					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericRegisterSampleCycles[3]),
-					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericRegisterSampleCycles[4]),
-					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericRegisterSampleCycles[5]),
-					performanceMonitor.commandProcessor.genericRegisterTimeSamples[0], performanceMonitor.commandProcessor.genericRegisterTimeSamples[1],
-					performanceMonitor.commandProcessor.genericRegisterTimeSamples[2], performanceMonitor.commandProcessor.genericRegisterTimeSamples[3],
-					performanceMonitor.commandProcessor.genericRegisterTimeSamples[4], performanceMonitor.commandProcessor.genericRegisterTimeSamples[5]);
+					"Cemu generic handler sampled time: estimatedMs=[waitSync:{:.3f},transfer:{:.3f},other:{:.3f}] rates=[waitSync:1/8,transfer:1/1,other:1/16] samples=[waitSync:{},transfer:{},other:{}]",
+					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericHandlerSampleCycles[1], 8),
+					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericHandlerSampleCycles[2], 1),
+					SampledCyclesToEstimatedMilliseconds(performanceMonitor.commandProcessor.genericHandlerSampleCycles[4], 16),
+					performanceMonitor.commandProcessor.genericHandlerTimeSamples[1],
+					performanceMonitor.commandProcessor.genericHandlerTimeSamples[2],
+					performanceMonitor.commandProcessor.genericHandlerTimeSamples[4]);
 			}
 		}
 	}
@@ -381,8 +378,8 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.commandProcessor.genericRegisterPackets.fill(0);
 	performanceMonitor.commandProcessor.genericRegisterWords.fill(0);
 	performanceMonitor.commandProcessor.genericRegisterLoadPackets.fill(0);
-	performanceMonitor.commandProcessor.genericRegisterTimeSamples.fill(0);
-	performanceMonitor.commandProcessor.genericRegisterSampleCycles.fill(0);
+	performanceMonitor.commandProcessor.genericHandlerTimeSamples.fill(0);
+	performanceMonitor.commandProcessor.genericHandlerSampleCycles.fill(0);
 	for (auto& widthPackets : performanceMonitor.commandProcessor.genericRegisterWidthPackets)
 		widthPackets.fill(0);
 	performanceMonitor.vk.numDrawBarriersPerFrame.reset();
