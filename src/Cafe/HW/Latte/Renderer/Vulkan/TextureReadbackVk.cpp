@@ -48,7 +48,7 @@ void LatteTextureReadbackInfoVk::StartTransfer()
 	region.imageExtent = {region.bufferRowLength, region.bufferImageHeight, 1};
 
 	const auto renderer = VulkanRenderer::GetInstance();
-	renderer->draw_endRenderPass();
+	renderer->draw_endRenderPass(VulkanRenderer::RenderPassEndReason::Readback);
 
 	renderer->barrier_image<VulkanRenderer::ANY_TRANSFER | VulkanRenderer::IMAGE_WRITE, VulkanRenderer::TRANSFER_READ>(baseTexture, region.imageSubresource, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
@@ -80,4 +80,3 @@ void LatteTextureReadbackInfoVk::ForceFinish()
 	const auto renderer = VulkanRenderer::GetInstance();
 	renderer->WaitCommandBufferFinished(m_associatedCommandBufferId);
 }
-

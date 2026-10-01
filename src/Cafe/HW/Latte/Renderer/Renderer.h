@@ -139,6 +139,7 @@ public:
 	};
 
 	virtual void buffer_bindVertexBuffers(std::span<BindBufferParam> bindings) = 0;
+	virtual bool buffer_tryBindSmallVertexBuffer(uint8, uint16, const uint8*, uint32) { return false; }
 	virtual void buffer_bindUniformBuffer(LatteConst::ShaderType shaderType, uint32 bufferIndex, uint32 offset, uint32 size) = 0;
 
 	// shader
