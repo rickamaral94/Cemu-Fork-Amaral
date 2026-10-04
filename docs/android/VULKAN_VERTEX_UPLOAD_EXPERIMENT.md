@@ -399,13 +399,54 @@ mesmo ponto de cada execução.
 
 - O pacote registra separadamente metadados declarados pelo AdrenoTools e dados
   efetivamente reportados por `vkGetPhysicalDeviceProperties2`.
-- Esta revisão registra `gpuTimeMs=unavailable` com o motivo. Ela não substitui
-  timestamps ausentes por tempo de CPU. Query pools de timestamps assíncronos
-  permanecem pendentes até que o resultado possa ser recuperado após fence sem
-  `vkDeviceWaitIdle` ou leitura síncrona no caminho normal.
+- Os timestamps GPU são habilitados por padrão no Android quando a fila gráfica
+  oferece `timestampValidBits` e um período válido. Falha de criação ou leitura
+  tem motivo explícito; nenhum tempo de CPU substitui uma amostra GPU ausente.
+  A variável de diagnóstico `CEMU_GPU_TIMESTAMPS=0` permite medir overhead sem
+  instrumentação. O default foi solicitado para esta build de validação.
 - As APIs públicas do Android não oferecem temperatura/clocks detalhados em todo
   aparelho. Campos sem fonte confiável são marcados `unavailable`; os arquivos
   KGSL continuam apenas como telemetria oportunista e não como contrato Android.
 - O resumo de sessão usa janelas exportadas. No modo detalhado, mediana/p95/p99,
   máximos e limites de 16,7/33,3/50 ms são calculados a partir dos frames mantidos
   somente até o fechamento de cada janela.
+
+
+### Timestamps GPU assíncronos por padrão
+
+Cada command buffer recebe um par de timestamps TOP/BOTTOM e ocupa dois queries
+num pool de 256 queries, independente dos queries de oclusão. A leitura ocorre
+na retirada da fence já sinalizada, antes da reutilização do slot, com 64 bits
+e disponibilidade, sem `VK_QUERY_RESULT_WAIT_BIT` e sem novos waits/idle. O
+contador é mascarado por `timestampValidBits` antes da conversão pelo período.
+
+Os intervalos de todos os submits do mesmo `SwapBuffers` são somados. O quadro
+só entra nos agregados quando todos os segmentos retornam; qualquer segmento
+ausente invalida o quadro inteiro. Isso inclui execução e stalls internos aos
+command buffers, mas exclui gaps entre submits, espera anterior à execução na
+fila, apresentação/scan-out e tempo CPU. Não é uma medida de utilização da GPU.
+
+- `gpuTimeMs`: soma em ms dos quadros GPU completos recebidos na janela.
+- `gpuTimePerFrameMs`: média em ms/frame desses quadros; usar no comparador.
+- `gpuFrameMsMedian/P95/P99/Max`: distribuição dos quadros completos da janela.
+- `gpuSamples`, `gpuFramesObserved`, `droppedSamples`: quadros válidos, quadros
+  retornados e quadros invalidados (não contagens de queries).
+- `gpuCoveragePct`: válidos/retornados; o report pondera os totais, sem fazer
+  média das porcentagens das janelas. Contagens permitem verificar completude.
+- `gpuTimingCpuMs`: custo host adicional de gravação e coleta na janela.
+
+`gpuWindowBasis=completed-results` declara que a recuperação é atrasada: uma
+janela CPU contém resultados GPU de quadros anteriores que terminaram nela.
+Não se deve subtrair esses valores como se CPU e GPU fossem o mesmo quadro.
+A inicialização e a cauda da sessão podem não conter resultados completos.
+O report inclui capacidades em `graphics.gpuTimestamps`, `gpuTimeMeanMs`
+ponderado por amostras e `gpuTimeMs` em ms/frame (distribuição das médias das
+janelas, com máximo real dos quadros). O máximo de `frameTimeMs` agora também
+preserva o maior frame detalhado; os percentis continuam sendo de janelas.
+
+Validação automática: conversão e wrap de 8/64 bits, completude de múltiplos
+submits, retorno atrasado/fora de ordem, falhas parciais e 100 mil reutilizações;
+Kotlin verifica parsing, unidades, cobertura ponderada e máximos reais.
+No Odin2 Portal: repetir primeiro a mesma cena com cache aquecido, conferir
+`enabled=true`, tempos numéricos e cobertura, e comparar correção visual, FPS,
+memória, temperatura e overhead antes do A/B entre drivers.

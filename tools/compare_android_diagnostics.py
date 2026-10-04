@@ -53,7 +53,7 @@ def compare(first_path, second_path):
         if left != right or left is None or right is None or str(left).lower().startswith("unavailable") or str(right).lower().startswith("unavailable"):
             divergences.append({"field": ".".join(path), "a": left, "b": right})
     metrics = {}
-    for name in ("frameMsMedian", "renderCpuMs", "gpuTimeMs", "fenceWaitMs", "queueSubmitCpuMs"):
+    for name in ("frameMsMedian", "renderCpuMs", "gpuTimeMs", "gpuTimePerFrameMs", "gpuFrameMsP95", "gpuTimingCpuMs", "fenceWaitMs", "queueSubmitCpuMs"):
         left, right = metric(first_windows, name), metric(second_windows, name)
         metrics[name] = {"a": left, "b": right}
         if left and right:

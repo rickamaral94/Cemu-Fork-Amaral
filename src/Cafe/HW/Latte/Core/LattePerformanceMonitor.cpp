@@ -3,6 +3,7 @@
 #include "WindowSystem.h"
 #include "Cemu/Logging/CemuLogging.h"
 #include "config/CemuConfig.h"
+#include <numeric>
 
 performanceMonitor_t performanceMonitor{};
 
@@ -20,8 +21,16 @@ struct DiagnosticWindow
 	uint32 frames{};
 	uint64 counters[9]{};
 	double times[10]{};
+	double gpuTimingCpuMs{};
 };
 DiagnosticWindow s_diagnosticWindow;
+struct GpuDiagnosticWindow
+{
+	uint32 observedFrames{};
+	uint32 droppedFrames{};
+	std::vector<double> samples;
+};
+GpuDiagnosticWindow s_gpuDiagnosticWindow;
 
 double Percentile(std::vector<double> values, double percentile)
 {
@@ -37,6 +46,16 @@ double TimerValueToMilliseconds(LattePerfStatTimer& timer)
 	return static_cast<double>(PPCTimer_tscToMicroseconds(timer.getPreviousFrameValue())) / 1000.0;
 }
 
+}
+
+void LattePerformanceMonitor_gpuFrameComplete(std::optional<double> timeMs)
+{
+	++s_gpuDiagnosticWindow.observedFrames;
+	// Bound diagnostic memory even if CPU-window logging is interrupted.
+	if (timeMs && s_gpuDiagnosticWindow.samples.size() < 4096)
+		s_gpuDiagnosticWindow.samples.push_back(*timeMs);
+	else
+		++s_gpuDiagnosticWindow.droppedFrames;
 }
 
 void LattePerformanceMonitor_frameEnd()
@@ -69,6 +88,8 @@ void LattePerformanceMonitor_frameEnd()
 	performanceMonitor.vk.queuePresentTime.frameFinished();
 	performanceMonitor.vk.presentWaitTime.frameFinished();
 	performanceMonitor.vk.commandBufferFenceWaitTime.frameFinished();
+	performanceMonitor.vk.gpuTimingCpuTime.frameFinished();
+	s_diagnosticWindow.gpuTimingCpuMs += TimerValueToMilliseconds(performanceMonitor.vk.gpuTimingCpuTime);
 	// Accumulate complete frames before per-frame counters are reset. Historical
 	// telemetry below keeps its original last-frame and rolling-FPS semantics.
 	++s_diagnosticWindow.frames;
@@ -192,6 +213,7 @@ void LattePerformanceMonitor_frameEnd()
 		if (isFirstUpdate)
 		{
 			s_diagnosticWindow = {};
+			s_gpuDiagnosticWindow = {};
 			s_frameTimeSamples.clear();
 			s_renderCpuSamples.clear();
 			s_previousFrameEnd = 0;
@@ -227,8 +249,17 @@ void LattePerformanceMonitor_frameEnd()
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_waitForAsync),
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_shaderCreate));
 			}
+			const auto& gpuSamples = s_gpuDiagnosticWindow.samples;
+			const double gpuTimeMs = std::accumulate(gpuSamples.begin(), gpuSamples.end(), 0.0);
+			const double gpuCoverage = s_gpuDiagnosticWindow.observedFrames > 0
+				? gpuSamples.size() * 100.0 / s_gpuDiagnosticWindow.observedFrames : 0.0;
+			const char* gpuReason = gpuSamples.empty()
+				? (std::string_view(performanceMonitor.vk.gpuTimestampReason) == "none"
+					? (s_gpuDiagnosticWindow.observedFrames > 0 ? "timestamp-result-unavailable" : "timestamp-results-pending")
+					: performanceMonitor.vk.gpuTimestampReason)
+				: (s_gpuDiagnosticWindow.droppedFrames > 0 ? "timestamp-partial-coverage" : "none");
 			cemuLog_log(LogType::Force,
-				"Cemu Vulkan window v1: durationMs={} fpsEffective={:.2f} frames={} drawCallsPerFrame={} renderCpuMs={:.3f} commandIdleMs={:.3f} nonIdleMs={:.3f} fenceWaitMs={:.3f} commandBufferFenceWaitMs={:.3f} asyncWaitMs={:.3f} shaderCreateMs={:.3f} pipelines={} pipelineCreations={} pipelineChanges={} queueSubmitCalls={} commandBuffers={} queueSubmitCpuMs={:.3f} acquireCalls={} acquireCpuMs={:.3f} presentCalls={} presentCallCpuMs={:.3f} presentWaitCalls={} presentWaitMs={:.3f} barriers={} layoutTransitions=unavailable beginRenderPasses={} swapchainRecreates={} gpuTimeMs=unavailable gpuReason=timestamp-instrumentation-not-enabled coveragePct=0 droppedSamples=0",
+				"Cemu Vulkan window v1: durationMs={} fpsEffective={:.2f} frames={} drawCallsPerFrame={} renderCpuMs={:.3f} commandIdleMs={:.3f} nonIdleMs={:.3f} fenceWaitMs={:.3f} commandBufferFenceWaitMs={:.3f} asyncWaitMs={:.3f} shaderCreateMs={:.3f} pipelines={} pipelineCreations={} pipelineChanges={} queueSubmitCalls={} commandBuffers={} queueSubmitCpuMs={:.3f} acquireCalls={} acquireCpuMs={:.3f} presentCalls={} presentCallCpuMs={:.3f} presentWaitCalls={} presentWaitMs={:.3f} barriers={} layoutTransitions=unavailable beginRenderPasses={} swapchainRecreates={} gpuTimeMs={} gpuReason={} coveragePct={:.2f} droppedSamples={} gpuSamples={} gpuFramesObserved={} gpuTimePerFrameMs={} gpuFrameMsMedian={} gpuFrameMsP95={} gpuFrameMsP99={} gpuFrameMsMax={} gpuTimingCpuMs={:.3f} gpuWindowBasis=completed-results",
 				elapsedTime, s_diagnosticWindow.frames * 1000.0 / elapsedTime, s_diagnosticWindow.frames, drawCallsPerFrame,
 				s_diagnosticWindow.times[0] / s_diagnosticWindow.frames,
 				s_diagnosticWindow.times[1] / s_diagnosticWindow.frames,
@@ -242,7 +273,16 @@ void LattePerformanceMonitor_frameEnd()
 				s_diagnosticWindow.counters[2], s_diagnosticWindow.times[7],
 				s_diagnosticWindow.counters[3], s_diagnosticWindow.times[8],
 				s_diagnosticWindow.counters[4], s_diagnosticWindow.times[9],
-				s_diagnosticWindow.counters[6], s_diagnosticWindow.counters[7], s_diagnosticWindow.counters[5]);
+				s_diagnosticWindow.counters[6], s_diagnosticWindow.counters[7], s_diagnosticWindow.counters[5],
+				gpuSamples.empty() ? "unavailable" : fmt::format("{:.6f}", gpuTimeMs), gpuReason, gpuCoverage,
+				s_gpuDiagnosticWindow.droppedFrames, gpuSamples.size(), s_gpuDiagnosticWindow.observedFrames,
+				gpuSamples.empty() ? "unavailable" : fmt::format("{:.6f}", gpuTimeMs / gpuSamples.size()),
+				gpuSamples.empty() ? "unavailable" : fmt::format("{:.6f}", Percentile(gpuSamples, 0.50)),
+				gpuSamples.empty() ? "unavailable" : fmt::format("{:.6f}", Percentile(gpuSamples, 0.95)),
+				gpuSamples.empty() ? "unavailable" : fmt::format("{:.6f}", Percentile(gpuSamples, 0.99)),
+				gpuSamples.empty() ? "unavailable" : fmt::format("{:.6f}", *std::max_element(gpuSamples.begin(), gpuSamples.end())),
+				s_diagnosticWindow.gpuTimingCpuMs);
+			s_gpuDiagnosticWindow = {};
 			s_diagnosticWindow = {};
 			if (GetConfig().overlay.debug && !s_frameTimeSamples.empty())
 			{

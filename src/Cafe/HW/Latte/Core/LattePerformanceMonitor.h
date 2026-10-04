@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 
 #define PERFORMANCE_MONITOR_TRACK_CYCLES	(5) // one cycle lasts one second
 
@@ -273,6 +274,8 @@ typedef struct
 		LattePerfStatTimer queuePresentTime;
 		LattePerfStatTimer presentWaitTime;
 		LattePerfStatTimer commandBufferFenceWaitTime;
+		LattePerfStatTimer gpuTimingCpuTime;
+		const char* gpuTimestampReason{"timestamp-instrumentation-not-enabled"};
 		LattePerfStatCounter numQueueSubmitsPerFrame;
 		LattePerfStatCounter numSubmittedCommandBuffersPerFrame;
 		LattePerfStatCounter numAcquireCallsPerFrame;
@@ -295,6 +298,7 @@ extern performanceMonitor_t performanceMonitor;
 
 void LattePerformanceMonitor_frameEnd();
 void LattePerformanceMonitor_frameBegin();
+void LattePerformanceMonitor_gpuFrameComplete(std::optional<double> timeMs);
 
 #define beginPerfMonProfiling(__obj) if( THasProfiling ) __obj.beginMeasuring()
 #define endPerfMonProfiling(__obj) if( THasProfiling ) __obj.endMeasuring()

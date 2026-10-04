@@ -56,6 +56,7 @@ data class DiagnosticGraphicsInfo(
     val customDriver: DiagnosticDriverInfo? = null,
     val vulkanReported: Map<String, String> = emptyMap(),
     val presentation: Map<String, String> = emptyMap(),
+    val gpuTimestamps: Map<String, String> = emptyMap(),
 )
 
 @Serializable

@@ -12,6 +12,7 @@
 #include "util/helpers/Semaphore.h"
 #include "util/containers/flat_hash_map.hpp"
 #include "util/containers/robin_hood.h"
+#include "Cafe/HW/Latte/Renderer/Vulkan/GpuTimestampTracker.h"
 
 struct VkSupportedFormatInfo_t
 {
@@ -692,6 +693,20 @@ private:
 	std::array<VkFence, kCommandBufferPoolSize> m_cmdBufferFences;
 	std::array<VkCommandBuffer, kCommandBufferPoolSize> m_commandBuffers;
 	std::array<VkSemaphore, kCommandBufferPoolSize> m_commandBufferSemaphores;
+
+	void InitGpuTimestamps();
+	void BeginGpuTimestamp();
+	void RetireGpuTimestamp(size_t commandBufferIndex);
+	VkQueryPool m_gpuTimestampPool{VK_NULL_HANDLE};
+	uint32 m_gpuTimestampValidBits{};
+	double m_gpuTimestampPeriodNs{};
+	struct GpuTimestampSlot
+	{
+		uint64 frameId{};
+		bool recorded{};
+	};
+	std::array<GpuTimestampSlot, kCommandBufferPoolSize> m_gpuTimestampSlots{};
+	GpuTimestampTracker m_gpuTimestampTracker;
 
 	VkSemaphore GetLastSubmittedCmdBufferSemaphore()
 	{

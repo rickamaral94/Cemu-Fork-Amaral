@@ -61,4 +61,50 @@ class PerformanceWindowExportTest {
 
     private fun windowLine(fps: Double, cpu: Double) =
         "Cemu Vulkan window v1: durationMs=1000 fpsEffective=$fps frames=20 renderCpuMs=$cpu commandIdleMs=8 nonIdleMs=32 fenceWaitMs=3 commandBufferFenceWaitMs=2 asyncWaitMs=0 shaderCreateMs=0 queueSubmitCalls=2 commandBuffers=2 queueSubmitCpuMs=0.05 acquireCalls=1 acquireCpuMs=0.2 presentCalls=1 presentCallCpuMs=0.03 presentWaitCalls=0 presentWaitMs=0 swapchainRecreates=0 gpuTimeMs=unavailable gpuReason=timestamp-instrumentation-not-enabled coveragePct=0 droppedSamples=0"
+
+    @Test
+    fun exportsGpuFrameMeansAndWeightedCoverageWithoutMixingWindowTotals() {
+        val first = parsePerformanceWindow(windowLine(20.0, 40.0), 0)!!.copy(
+            gpuTimeMs = 40.0, gpuSamples = 20, gpuFramesObserved = 20,
+            gpuTimePerFrameMs = 2.0, gpuFrameMsMax = 7.0,
+            gpuCoveragePct = 100.0, gpuUnavailableReason = null,
+        )
+        val second = first.copy(sequence = 1, gpuTimeMs = 20.0, gpuSamples = 5,
+            gpuFramesObserved = 10, gpuTimePerFrameMs = 4.0, gpuCoveragePct = 50.0,
+            droppedSamples = 5, gpuUnavailableReason = "timestamp-partial-coverage")
+        val summary = summarizePerformanceWindows(listOf(first, second))
+        assertEquals(25, summary.totalGpuSamples)
+        assertEquals(30, summary.totalGpuFramesObserved)
+        assertEquals(83.333333, summary.gpuCoveragePct, 0.00001)
+        assertEquals(2.4, summary.gpuTimeMeanMs!!, 0.00001)
+        assertEquals(4.0, summary.gpuTimeMs!!.p95, 0.00001)
+        assertEquals(7.0, summary.gpuTimeMs!!.max, 0.00001)
+        assertEquals(5, summary.droppedSamples)
+    }
+
+    @Test
+    fun parsesAvailableGpuTimeAndKeepsCompletionBasis() {
+        val line = windowLine(30.0, 30.0)
+            .replace("gpuTimeMs=unavailable", "gpuTimeMs=75.5")
+            .replace("gpuReason=timestamp-instrumentation-not-enabled", "gpuReason=none")
+            .replace("coveragePct=0", "coveragePct=100") +
+            " gpuSamples=30 gpuFramesObserved=30 gpuTimePerFrameMs=2.516667 gpuFrameMsP95=4.3 gpuFrameMsMax=5.0 gpuTimingCpuMs=0.3 gpuWindowBasis=completed-results"
+        val export = exportPerformanceWindows(line)
+        val window = export.windows.single()
+        assertEquals(75.5, window.gpuTimeMs!!, 0.00001)
+        assertEquals(30, window.gpuSamples)
+        assertNull(window.gpuUnavailableReason)
+        assertEquals("completed-results", window.gpuWindowBasis)
+        assertTrue(export.jsonLines!!.contains("completed samples mean"))
+    }
+
+    @Test
+    fun sessionMaximumPreservesActualStallsBeyondWindowMedian() {
+        val window = parsePerformanceWindow(windowLine(30.0, 30.0), 0)!!.copy(
+            frameMsMedian = 33.3, frameMsMax = 1029.987,
+        )
+        val summary = summarizePerformanceWindows(listOf(window))
+        assertEquals(33.3, summary.frameTimeMs!!.median, 0.00001)
+        assertEquals(1029.987, summary.frameTimeMs!!.max, 0.00001)
+    }
 }

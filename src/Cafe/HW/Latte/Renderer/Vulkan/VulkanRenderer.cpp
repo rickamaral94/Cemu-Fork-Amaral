@@ -808,6 +808,7 @@ VulkanRenderer::VulkanRenderer() : Renderer(RendererAPI::Vulkan)
 	QueryAvailableFormats();
 	CreateCommandPool();
 	CreateCommandBuffers();
+	InitGpuTimestamps();
 	CreateDescriptorPool();
 	swapchain_createDescriptorSetLayout();
 
@@ -898,6 +899,8 @@ VulkanRenderer::~VulkanRenderer()
 
 	if(m_occlusionQueries.queryPool != VK_NULL_HANDLE)
 		vkDestroyQueryPool(m_logicalDevice, m_occlusionQueries.queryPool, nullptr);
+	if (m_gpuTimestampPool != VK_NULL_HANDLE)
+		vkDestroyQueryPool(m_logicalDevice, m_gpuTimestampPool, nullptr);
 
 	vkDestroyDescriptorSetLayout(m_logicalDevice, m_swapchainDescriptorSetLayout, nullptr);
 
@@ -2170,6 +2173,80 @@ void VulkanRenderer::DrawEmptyFrame(bool mainWindow)
 	SwapBuffers(mainWindow, !mainWindow);
 }
 
+void VulkanRenderer::InitGpuTimestamps()
+{
+#if BOOST_PLAT_ANDROID
+	performanceMonitor.vk.gpuTimestampReason = "timestamp-unsupported";
+	const char* disabled = getenv("CEMU_GPU_TIMESTAMPS");
+	if (disabled && std::string_view(disabled) == "0")
+		performanceMonitor.vk.gpuTimestampReason = "timestamp-disabled-by-env";
+	else if (!vkCmdWriteTimestamp || !vkGetQueryPoolResults)
+		performanceMonitor.vk.gpuTimestampReason = "timestamp-entrypoints-unavailable";
+	else
+	{
+		VkPhysicalDeviceProperties properties{};
+		vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
+		uint32 familyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &familyCount, nullptr);
+		std::vector<VkQueueFamilyProperties> families(familyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &familyCount, families.data());
+		m_gpuTimestampValidBits = families.at(m_indices.graphicsFamily).timestampValidBits;
+		m_gpuTimestampPeriodNs = properties.limits.timestampPeriod;
+		if (GpuTimestampTracker::DurationMs(0, 1, m_gpuTimestampValidBits, m_gpuTimestampPeriodNs))
+		{
+			VkQueryPoolCreateInfo info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+			info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+			info.queryCount = kCommandBufferPoolSize * 2;
+			const VkResult result = vkCreateQueryPool(m_logicalDevice, &info, nullptr, &m_gpuTimestampPool);
+			performanceMonitor.vk.gpuTimestampReason = result == VK_SUCCESS ? "none" : "timestamp-pool-create-failed";
+			if (result != VK_SUCCESS)
+				m_gpuTimestampPool = VK_NULL_HANDLE;
+		}
+	}
+#else
+	performanceMonitor.vk.gpuTimestampReason = "timestamp-disabled-on-platform";
+#endif
+	cemuLog_log(LogType::Force,
+		"Vulkan: GPU timestamps enabled={} reason={} validBits={} timestampPeriodNs={} measurement=sum-submit-top-bottom defaultAndroid=true readback=after-existing-fence",
+		m_gpuTimestampPool != VK_NULL_HANDLE, performanceMonitor.vk.gpuTimestampReason, m_gpuTimestampValidBits, m_gpuTimestampPeriodNs);
+}
+
+void VulkanRenderer::BeginGpuTimestamp()
+{
+	if (m_gpuTimestampPool == VK_NULL_HANDLE)
+		return;
+	LattePerfStatTimerScope timing(performanceMonitor.vk.gpuTimingCpuTime);
+	const uint32 firstQuery = static_cast<uint32>(m_commandBufferIndex) * 2;
+	// The slot's previous fence has already retired and its results were read.
+	vkCmdResetQueryPool(m_state.currentCommandBuffer, m_gpuTimestampPool, firstQuery, 2);
+	vkCmdWriteTimestamp(m_state.currentCommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_gpuTimestampPool, firstQuery);
+	m_gpuTimestampSlots[m_commandBufferIndex].recorded = true;
+}
+
+void VulkanRenderer::RetireGpuTimestamp(size_t commandBufferIndex)
+{
+	auto& slot = m_gpuTimestampSlots[commandBufferIndex];
+	if (!slot.recorded)
+		return;
+	LattePerfStatTimerScope timing(performanceMonitor.vk.gpuTimingCpuTime);
+	struct QueryResult
+	{
+		uint64 timestamp;
+		uint64 available;
+	};
+	std::array<QueryResult, 2> values{};
+	const VkResult result = vkGetQueryPoolResults(m_logicalDevice, m_gpuTimestampPool,
+		static_cast<uint32>(commandBufferIndex) * 2, 2, sizeof(values), values.data(), sizeof(QueryResult),
+		VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+	std::optional<double> timeMs;
+	if (result == VK_SUCCESS && values[0].available && values[1].available)
+		timeMs = GpuTimestampTracker::DurationMs(values[0].timestamp, values[1].timestamp, m_gpuTimestampValidBits, m_gpuTimestampPeriodNs);
+	else
+		cemuLog_log(LogType::Force, "Vulkan: GPU timestamp sample unavailable result={} reason=timestamp-result-unavailable", static_cast<sint32>(result));
+	m_gpuTimestampTracker.Complete(slot.frameId, timeMs, LattePerformanceMonitor_gpuFrameComplete);
+	slot.recorded = false;
+}
+
 void VulkanRenderer::InitFirstCommandBuffer()
 {
 	cemu_assert_debug(m_state.currentCommandBuffer == nullptr);
@@ -2183,6 +2260,7 @@ void VulkanRenderer::InitFirstCommandBuffer()
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(m_state.currentCommandBuffer, &beginInfo);
+	BeginGpuTimestamp();
 
 	vkCmdSetViewport(m_state.currentCommandBuffer, 0, 1, &m_state.currentViewport);
 	vkCmdSetScissor(m_state.currentCommandBuffer, 0, 1, &m_state.currentScissorRect);
@@ -2198,6 +2276,7 @@ void VulkanRenderer::ProcessFinishedCommandBuffers()
 		VkResult fenceStatus = vkGetFenceStatus(m_logicalDevice, m_cmdBufferFences[m_commandBufferSyncIndex]);
 		if (fenceStatus == VK_SUCCESS)
 		{
+			RetireGpuTimestamp(m_commandBufferSyncIndex);
 			ProcessDestructionQueue();
 			m_uniformVarBufferReadIndex = m_cmdBufferUniformRingbufIndices[m_commandBufferSyncIndex];
 			m_commandBufferSyncIndex = (m_commandBufferSyncIndex + 1) % m_commandBuffers.size();
@@ -2243,6 +2322,13 @@ void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphor
 	draw_endRenderPass(RenderPassEndReason::Submit);
 
 	occlusionQuery_notifyEndCommandBuffer();
+	if (m_gpuTimestampPool != VK_NULL_HANDLE)
+	{
+		LattePerfStatTimerScope timing(performanceMonitor.vk.gpuTimingCpuTime);
+		vkCmdWriteTimestamp(m_state.currentCommandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			m_gpuTimestampPool, static_cast<uint32>(m_commandBufferIndex) * 2 + 1);
+		m_gpuTimestampSlots[m_commandBufferIndex].frameId = m_gpuTimestampTracker.Submit();
+	}
 
 	vkEndCommandBuffer(m_state.currentCommandBuffer);
 
@@ -2313,6 +2399,7 @@ void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphor
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(m_state.currentCommandBuffer, &beginInfo);
+	BeginGpuTimestamp();
 
 	// make sure some states are set for this command buffer
 	vkCmdSetViewport(m_state.currentCommandBuffer, 0, 1, &m_state.currentViewport);
@@ -3276,6 +3363,8 @@ void VulkanRenderer::SwapBuffers(bool swapTV, bool swapDRC)
 
 	if (swapDRC && IsSwapchainInfoValid(false))
 		SwapBuffer(false);
+	if (m_gpuTimestampPool != VK_NULL_HANDLE)
+		m_gpuTimestampTracker.CloseFrame(LattePerformanceMonitor_gpuFrameComplete);
 
 	if(swapTV)
 		VulkanBenchmarkPrintResults();

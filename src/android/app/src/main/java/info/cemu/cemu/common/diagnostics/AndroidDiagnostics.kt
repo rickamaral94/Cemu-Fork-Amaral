@@ -104,6 +104,10 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                     },
                     vulkanReported = extractVulkanReportedInfo(logText),
                     presentation = extractPresentationInfo(logText),
+                    gpuTimestamps = logText.lineSequence()
+                        .lastOrNull { it.contains("Vulkan: GPU timestamps") }
+                        ?.let { parseKeyValues(it.substringAfter("Vulkan: GPU timestamps")) }
+                        ?: mapOf("status" to "unavailable: no timestamp capability in selected log"),
                 ),
                 settings = DiagnosticSettingsInfo(
                     asyncShaderCompile = NativeSettings.getAsyncShaderCompile(),

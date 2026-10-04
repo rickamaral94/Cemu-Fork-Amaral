@@ -43,6 +43,15 @@ data class PerformanceWindow(
     val gpuUnavailableReason: String? = null,
     val gpuCoveragePct: Double,
     val droppedSamples: Int,
+    val gpuSamples: Int? = null,
+    val gpuFramesObserved: Int? = null,
+    val gpuTimePerFrameMs: Double? = null,
+    val gpuFrameMsMedian: Double? = null,
+    val gpuFrameMsP95: Double? = null,
+    val gpuFrameMsP99: Double? = null,
+    val gpuFrameMsMax: Double? = null,
+    val gpuTimingCpuMs: Double? = null,
+    val gpuWindowBasis: String? = null,
     val frameMsMedian: Double? = null,
     val frameMsP95: Double? = null,
     val frameMsP99: Double? = null,
@@ -74,6 +83,10 @@ data class PerformanceSessionSummary(
     val totalSwapchainRecreates: Int,
     val droppedSamples: Int,
     val totalPipelineCreations: Int = 0,
+    val totalGpuSamples: Int = 0,
+    val totalGpuFramesObserved: Int = 0,
+    val gpuTimeMeanMs: Double? = null,
+    val gpuTimingNote: String = "GPU timestamps sum submitted command-buffer intervals per frame, including in-buffer stalls; windows contain completed results. Summary gpuTimeMs is ms/frame (distribution of window means); it is not utilization or display latency.",
     val framesOver16_7Ms: Int? = null,
     val framesOver33_3Ms: Int? = null,
     val framesOver50Ms: Int? = null,
@@ -154,25 +167,45 @@ internal fun parsePerformanceWindow(line: String, sequence: Int): PerformanceWin
         gpuUnavailableReason = values["gpuReason"]?.takeUnless { it == "none" },
         gpuCoveragePct = double("coveragePct") ?: 0.0,
         droppedSamples = int("droppedSamples") ?: 0,
+        gpuSamples = int("gpuSamples"),
+        gpuFramesObserved = int("gpuFramesObserved"),
+        gpuTimePerFrameMs = double("gpuTimePerFrameMs"),
+        gpuFrameMsMedian = double("gpuFrameMsMedian"),
+        gpuFrameMsP95 = double("gpuFrameMsP95"),
+        gpuFrameMsP99 = double("gpuFrameMsP99"),
+        gpuFrameMsMax = double("gpuFrameMsMax"),
+        gpuTimingCpuMs = double("gpuTimingCpuMs"),
+        gpuWindowBasis = values["gpuWindowBasis"],
     )
 }
 
 fun summarizePerformanceWindows(windows: List<PerformanceWindow>): PerformanceSessionSummary {
     if (windows.isEmpty()) return emptyPerformanceSummary()
     val frameTimes = windows.mapNotNull { window -> window.frameMsMedian ?: window.fpsEffective.takeIf { it > 0.0 }?.let { 1000.0 / it } }
-    val gpuTimes = windows.mapNotNull { it.gpuTimeMs }
+    val gpuTimes = windows.mapNotNull { it.gpuTimePerFrameMs }
+    val gpuSamples = windows.sumOf { it.gpuSamples ?: 0 }
+    val gpuFramesObserved = windows.sumOf { it.gpuFramesObserved ?: 0 }
+    val frameDistribution = distribution(frameTimes)?.let { stats ->
+        stats.copy(max = windows.mapNotNull { it.frameMsMax }.maxOrNull() ?: stats.max)
+    }
     return PerformanceSessionSummary(
         windowCount = windows.size,
-        frameTimeMs = distribution(frameTimes),
+        frameTimeMs = frameDistribution,
         renderCpuMs = distribution(windows.map { it.renderCpuMs }),
-        gpuTimeMs = distribution(gpuTimes),
-        gpuCoveragePct = windows.map { it.gpuCoveragePct }.average(),
+        gpuTimeMs = distribution(gpuTimes)?.let { stats ->
+            stats.copy(max = windows.mapNotNull { it.gpuFrameMsMax }.maxOrNull() ?: stats.max)
+        },
+        gpuCoveragePct = if (gpuFramesObserved > 0) gpuSamples * 100.0 / gpuFramesObserved
+            else windows.map { it.gpuCoveragePct }.average(),
         totalFrames = windows.sumOf { it.frames },
         totalQueueSubmits = windows.sumOf { it.queueSubmitCalls },
         totalPresentCalls = windows.sumOf { it.presentCalls },
         totalSwapchainRecreates = windows.sumOf { it.swapchainRecreates },
         droppedSamples = windows.sumOf { it.droppedSamples },
         totalPipelineCreations = windows.sumOf { it.pipelineCreations },
+        totalGpuSamples = gpuSamples,
+        totalGpuFramesObserved = gpuFramesObserved,
+        gpuTimeMeanMs = if (gpuSamples > 0) windows.sumOf { it.gpuTimeMs ?: 0.0 } / gpuSamples else null,
         framesOver16_7Ms = windows.mapNotNull { it.framesOver16_7Ms }.takeIf { it.isNotEmpty() }?.sum(),
         framesOver33_3Ms = windows.mapNotNull { it.framesOver33_3Ms }.takeIf { it.isNotEmpty() }?.sum(),
         framesOver50Ms = windows.mapNotNull { it.framesOver50Ms }.takeIf { it.isNotEmpty() }?.sum(),
@@ -231,6 +264,11 @@ private val PERFORMANCE_WINDOW_UNITS = mapOf(
     "frameMs*" to "ms/frame",
     "frames" to "count/window",
     "gpuTimeMs" to "ms/window",
+    "gpuTimePerFrameMs" to "ms/frame (completed samples mean)",
+    "gpuFrameMs*" to "ms/frame (completed samples)",
+    "gpuTimingCpuMs" to "ms/window (host instrumentation)",
+    "gpuSamples" to "valid frames/window (completed results)",
+    "gpuFramesObserved" to "completed frames/window (valid + dropped)",
     "gpuCoveragePct" to "percent",
     "*Calls" to "count/window",
 )
