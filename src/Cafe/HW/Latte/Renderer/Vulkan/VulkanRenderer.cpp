@@ -4530,7 +4530,10 @@ void VKRObjectPipeline::SetPipeline(VkPipeline newPipeline)
 		return;
 	cemu_assert_debug(m_pipeline == VK_NULL_HANDLE); // replacing an already assigned pipeline is not intended
 	if(m_pipeline == VK_NULL_HANDLE && newPipeline != VK_NULL_HANDLE)
+	{
 		performanceMonitor.vk.numGraphicPipelines.increment();
+		performanceMonitor.vk.numGraphicPipelineCreations.increment();
+	}
 	else if(m_pipeline != VK_NULL_HANDLE && newPipeline == VK_NULL_HANDLE)
 		performanceMonitor.vk.numGraphicPipelines.decrement();
 	m_pipeline = newPipeline;

@@ -14,7 +14,7 @@ std::vector<double> s_frameTimeSamples;
 std::vector<double> s_renderCpuSamples;
 uint64 s_diagnosticOverheadCycles = 0;
 uint64 s_previousFrameEnd = 0;
-uint32 s_previousPipelineCount = 0;
+uint32 s_previousPipelineCreations = 0;
 struct DiagnosticWindow
 {
 	uint32 frames{};
@@ -210,8 +210,9 @@ void LattePerformanceMonitor_frameEnd()
 			const uint32 drawCallsPerFrame = drawCallCounter / elapsedFrames;
 			const uint32 fastDrawCallsPerFrame = fastDrawCallCounter / elapsedFrames;
 			const uint32 pipelineCount = performanceMonitor.vk.numGraphicPipelines.get();
-			const uint32 pipelineCreations = pipelineCount >= s_previousPipelineCount ? pipelineCount - s_previousPipelineCount : 0;
-			s_previousPipelineCount = pipelineCount;
+			const uint32 totalPipelineCreations = performanceMonitor.vk.numGraphicPipelineCreations.get();
+			const uint32 pipelineCreations = totalPipelineCreations - s_previousPipelineCreations;
+			s_previousPipelineCreations = totalPipelineCreations;
 			LatteOverlay_updateStats(fps, drawCallsPerFrame, fastDrawCallsPerFrame);
 			WindowSystem::UpdateWindowTitles(false, false, fps);
 			const uint32 now = GetTickCount();

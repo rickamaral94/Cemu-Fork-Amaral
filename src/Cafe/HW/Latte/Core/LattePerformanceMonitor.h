@@ -180,6 +180,7 @@ typedef struct
 		LattePerfStatCounter numDescriptorStorageBuffers;
 		LattePerfStatCounter numDescriptorSamplerTextures;
 		LattePerfStatCounter numGraphicPipelines;
+		LattePerfStatCounter numGraphicPipelineCreations;
 		LattePerfStatCounter numImages;
 		LattePerfStatCounter numImageViews;
 		LattePerfStatCounter numSamplers;
