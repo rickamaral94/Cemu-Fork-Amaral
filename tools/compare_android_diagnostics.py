@@ -26,7 +26,9 @@ def read_bundle(path):
 
 def value_at(data, path):
     for part in path:
-        data = data.get(part, {})
+        if not isinstance(data, dict):
+            return None
+        data = data.get(part)
     return data
 
 
@@ -48,7 +50,7 @@ def compare(first_path, second_path):
     divergences = []
     for path in IDENTITY_PATHS:
         left, right = value_at(first_report, path), value_at(second_report, path)
-        if left != right:
+        if left != right or left is None or right is None or str(left).lower().startswith("unavailable") or str(right).lower().startswith("unavailable"):
             divergences.append({"field": ".".join(path), "a": left, "b": right})
     metrics = {}
     for name in ("frameMsMedian", "renderCpuMs", "gpuTimeMs", "fenceWaitMs", "queueSubmitCpuMs"):
@@ -59,7 +61,7 @@ def compare(first_path, second_path):
             metrics[name]["p95Delta"] = right["p95"] - left["p95"]
     return {
         "schemaVersion": 1,
-        "comparable": not divergences,
+        "comparable": not divergences and bool(first_windows) and bool(second_windows),
         "configurationDivergences": divergences,
         "thermal": {"a": first_report.get("device", {}).get("thermalStatus"), "b": second_report.get("device", {}).get("thermalStatus")},
         "gpuCoveragePct": {"a": first_report.get("performance", {}).get("gpuCoveragePct"), "b": second_report.get("performance", {}).get("gpuCoveragePct")},

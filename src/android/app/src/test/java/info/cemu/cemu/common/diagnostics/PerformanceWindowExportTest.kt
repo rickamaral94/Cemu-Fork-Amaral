@@ -33,6 +33,32 @@ class PerformanceWindowExportTest {
         assertEquals(40, summary.totalFrames)
     }
 
+    @Test
+    fun detailAfterEnablingDebugBelongsToItsOwnWindow() {
+        val log = listOf(
+            windowLine(20.0, 40.0),
+            windowLine(25.0, 30.0),
+            "Cemu Vulkan detailed window v1: frameMs=[median:40.000,p95:45.000,p99:50.000,max:60.000] over16_7=20 over33_3=20 over50=1 samples=20 overheadMs=0.120",
+        ).joinToString("\n")
+
+        val export = exportPerformanceWindows(log)
+
+        assertNull(export.windows[0].frameMsMedian)
+        assertEquals(40.0, export.windows[1].frameMsMedian!!, 0.001)
+        assertEquals(1, export.windows[1].framesOver50Ms)
+        assertEquals(0.12, export.windows[1].instrumentationOverheadMs!!, 0.001)
+    }
+
+    @Test
+    fun sessionTotalsIncludeEveryExportedWindow() {
+        val export = exportPerformanceWindows(listOf(windowLine(20.0, 40.0), windowLine(25.0, 30.0)).joinToString("\n"))
+
+        assertEquals(40, export.summary.totalFrames)
+        assertEquals(4, export.summary.totalQueueSubmits)
+        assertEquals(2, export.summary.totalPresentCalls)
+        assertTrue(export.jsonLines!!.contains("ms/frame (window mean)"))
+    }
+
     private fun windowLine(fps: Double, cpu: Double) =
         "Cemu Vulkan window v1: durationMs=1000 fpsEffective=$fps frames=20 renderCpuMs=$cpu commandIdleMs=8 nonIdleMs=32 fenceWaitMs=3 commandBufferFenceWaitMs=2 asyncWaitMs=0 shaderCreateMs=0 queueSubmitCalls=2 commandBuffers=2 queueSubmitCpuMs=0.05 acquireCalls=1 acquireCpuMs=0.2 presentCalls=1 presentCallCpuMs=0.03 presentWaitCalls=0 presentWaitMs=0 swapchainRecreates=0 gpuTimeMs=unavailable gpuReason=timestamp-instrumentation-not-enabled coveragePct=0 droppedSamples=0"
 }

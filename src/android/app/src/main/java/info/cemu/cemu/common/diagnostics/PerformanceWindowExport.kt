@@ -90,22 +90,23 @@ fun exportPerformanceWindows(log: String?): PerformanceWindowExport {
     if (log == null) {
         return PerformanceWindowExport(emptyList(), null, emptyPerformanceSummary())
     }
-    val baseWindows = log.lineSequence()
-        .filter { it.contains(WINDOW_PREFIX) }
-        .mapIndexedNotNull { index, line -> parsePerformanceWindow(line, index) }
-        .toList()
-    val detailed = log.lineSequence().filter { it.contains(DETAILED_PREFIX) }
-        .map(::parseDetailedWindow).toList()
-    val windows = baseWindows.mapIndexed { index, window ->
-        val detail = detailed.getOrNull(index) ?: return@mapIndexed window
-        window.copy(
-            frameMsMedian = detail["frameMedian"], frameMsP95 = detail["frameP95"],
-            frameMsP99 = detail["frameP99"], frameMsMax = detail["frameMax"],
-            framesOver16_7Ms = detail["over16_7"]?.toInt(),
-            framesOver33_3Ms = detail["over33_3"]?.toInt(),
-            framesOver50Ms = detail["over50"]?.toInt(),
-            instrumentationOverheadMs = detail["overheadMs"],
-        )
+    val windows = mutableListOf<PerformanceWindow>()
+    // A detail line belongs to the preceding base window, including when Debug
+    // is enabled part-way through a session. Independent list indices shift it.
+    log.lineSequence().forEach { line ->
+        if (line.contains(WINDOW_PREFIX)) {
+            parsePerformanceWindow(line, windows.size)?.let(windows::add)
+        } else if (line.contains(DETAILED_PREFIX) && windows.isNotEmpty()) {
+            val detail = parseDetailedWindow(line)
+            windows[windows.lastIndex] = windows.last().copy(
+                frameMsMedian = detail["frameMedian"], frameMsP95 = detail["frameP95"],
+                frameMsP99 = detail["frameP99"], frameMsMax = detail["frameMax"],
+                framesOver16_7Ms = detail["over16_7"]?.toInt(),
+                framesOver33_3Ms = detail["over33_3"]?.toInt(),
+                framesOver50Ms = detail["over50"]?.toInt(),
+                instrumentationOverheadMs = detail["overheadMs"],
+            )
+        }
     }
     val jsonLines = windows.takeIf { it.isNotEmpty() }
         ?.joinToString(separator = "\n", postfix = "\n") { WINDOW_JSON.encodeToString(it) }
@@ -216,7 +217,19 @@ private val WINDOW_JSON = Json { encodeDefaults = true }
 private val PERFORMANCE_WINDOW_UNITS = mapOf(
     "durationMs" to "ms",
     "fpsEffective" to "frames/s",
-    "*CpuMs" to "ms/window",
+    "renderCpuMs" to "ms/frame (window mean)",
+    "commandIdleMs" to "ms/frame (window mean)",
+    "nonIdleMs" to "ms/frame (window mean)",
+    "fenceWaitMs" to "ms/frame (window mean)",
+    "commandBufferFenceWaitMs" to "ms/frame (window mean)",
+    "asyncWaitMs" to "ms/frame (window mean)",
+    "shaderCreateMs" to "ms/frame (window mean)",
+    "queueSubmitCpuMs" to "ms/window",
+    "acquireCpuMs" to "ms/window",
+    "presentCallCpuMs" to "ms/window",
+    "presentWaitMs" to "ms/window",
+    "frameMs*" to "ms/frame",
+    "frames" to "count/window",
     "gpuTimeMs" to "ms/window",
     "gpuCoveragePct" to "percent",
     "*Calls" to "count/window",

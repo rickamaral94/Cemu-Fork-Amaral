@@ -364,6 +364,16 @@ segundo, declara unidades e separa CPU do core, tempo dentro de chamadas Vulkan,
 esperas e cadência observada. `presentCallCpuMs` mede somente a duração host de
 `vkQueuePresentKHR`; não é latência visual nem confirmação de scan-out.
 
+As novas janelas contam todos os frames e eventos no intervalo. Os tempos do
+core (`renderCpuMs`, `commandIdleMs`, `nonIdleMs`, `fenceWaitMs`, `asyncWaitMs`,
+`shaderCreateMs` e `commandBufferFenceWaitMs`) são médias por frame da janela.
+Tempos dentro de chamadas Vulkan e contagens são somas da janela. As linhas
+históricas continuam com seus nomes e suas semânticas originais. O resumo de
+frame time calcula uma distribuição das medianas das janelas (ou da cadência
+média quando Debug está desligado), e não percentis globais de todos os frames.
+O comparador recusa identidades ausentes/desconhecidas e sessões sem janelas;
+os hashes dos graphic packs excluem os horários das linhas de log.
+
 O modo normal mantém contadores e agregados leves. Para uma captura A/B detalhada,
 ative **Overlay > Debug**, que também calcula distribuições limitadas em memória
 para os frames da janela e registra a sobrecarga do diagnóstico. O menu durante a

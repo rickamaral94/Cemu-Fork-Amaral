@@ -15,6 +15,13 @@ std::vector<double> s_renderCpuSamples;
 uint64 s_diagnosticOverheadCycles = 0;
 uint64 s_previousFrameEnd = 0;
 uint32 s_previousPipelineCount = 0;
+struct DiagnosticWindow
+{
+	uint32 frames{};
+	uint64 counters[9]{};
+	double times[10]{};
+};
+DiagnosticWindow s_diagnosticWindow;
 
 double Percentile(std::vector<double> values, double percentile)
 {
@@ -62,6 +69,31 @@ void LattePerformanceMonitor_frameEnd()
 	performanceMonitor.vk.queuePresentTime.frameFinished();
 	performanceMonitor.vk.presentWaitTime.frameFinished();
 	performanceMonitor.vk.commandBufferFenceWaitTime.frameFinished();
+	// Accumulate complete frames before per-frame counters are reset. Historical
+	// telemetry below keeps its original last-frame and rolling-FPS semantics.
+	++s_diagnosticWindow.frames;
+	LattePerfStatTimer* windowTimers[] = {
+		&performanceMonitor.gpuTime_frameTime, &performanceMonitor.gpuTime_idleTime,
+		&performanceMonitor.gpuTime_fenceTime, &performanceMonitor.vk.commandBufferFenceWaitTime,
+		&performanceMonitor.gpuTime_waitForAsync, &performanceMonitor.gpuTime_shaderCreate,
+		&performanceMonitor.vk.queueSubmitTime, &performanceMonitor.vk.acquireImageTime,
+		&performanceMonitor.vk.queuePresentTime, &performanceMonitor.vk.presentWaitTime};
+	for (size_t i = 0; i < std::size(windowTimers); ++i)
+		s_diagnosticWindow.times[i] += TimerValueToMilliseconds(*windowTimers[i]);
+	LattePerfStatCounter* windowCounters[] = {
+		&performanceMonitor.vk.numQueueSubmitsPerFrame, &performanceMonitor.vk.numSubmittedCommandBuffersPerFrame,
+		&performanceMonitor.vk.numAcquireCallsPerFrame, &performanceMonitor.vk.numPresentCallsPerFrame,
+		&performanceMonitor.vk.numPresentWaitsPerFrame, &performanceMonitor.vk.numSwapchainRecreatesPerFrame,
+		&performanceMonitor.vk.numDrawBarriersPerFrame, &performanceMonitor.vk.numBeginRenderpassPerFrame,
+		&performanceMonitor.vk.numVulkanPipelineBindsPerFrame};
+	for (size_t i = 0; i < std::size(windowCounters); ++i)
+	{
+		s_diagnosticWindow.counters[i] += windowCounters[i]->get();
+		// Presentation happens after frameEnd. Retain these new counters until
+		// the next frameEnd, just like the Vulkan duration timers.
+		if (i < 6)
+			windowCounters[i]->reset();
+	}
 
 	if (GetConfig().overlay.debug)
 	{
@@ -159,6 +191,10 @@ void LattePerformanceMonitor_frameEnd()
 
 		if (isFirstUpdate)
 		{
+			s_diagnosticWindow = {};
+			s_frameTimeSamples.clear();
+			s_renderCpuSamples.clear();
+			s_previousFrameEnd = 0;
 			LatteOverlay_updateStats(0.0, 0, 0);
 			WindowSystem::UpdateWindowTitles(false, false, 0.0);
 		}
@@ -173,10 +209,6 @@ void LattePerformanceMonitor_frameEnd()
 			const double genericPathMs = std::max(commandBufferMs - continuousPassMs, 0.0);
 			const uint32 drawCallsPerFrame = drawCallCounter / elapsedFrames;
 			const uint32 fastDrawCallsPerFrame = fastDrawCallCounter / elapsedFrames;
-			const double submitMs = TimerValueToMilliseconds(performanceMonitor.vk.queueSubmitTime);
-			const double acquireMs = TimerValueToMilliseconds(performanceMonitor.vk.acquireImageTime);
-			const double presentCallMs = TimerValueToMilliseconds(performanceMonitor.vk.queuePresentTime);
-			const double presentWaitMs = TimerValueToMilliseconds(performanceMonitor.vk.presentWaitTime);
 			const uint32 pipelineCount = performanceMonitor.vk.numGraphicPipelines.get();
 			const uint32 pipelineCreations = pipelineCount >= s_previousPipelineCount ? pipelineCount - s_previousPipelineCount : 0;
 			s_previousPipelineCount = pipelineCount;
@@ -196,20 +228,21 @@ void LattePerformanceMonitor_frameEnd()
 			}
 			cemuLog_log(LogType::Force,
 				"Cemu Vulkan window v1: durationMs={} fpsEffective={:.2f} frames={} drawCallsPerFrame={} renderCpuMs={:.3f} commandIdleMs={:.3f} nonIdleMs={:.3f} fenceWaitMs={:.3f} commandBufferFenceWaitMs={:.3f} asyncWaitMs={:.3f} shaderCreateMs={:.3f} pipelines={} pipelineCreations={} pipelineChanges={} queueSubmitCalls={} commandBuffers={} queueSubmitCpuMs={:.3f} acquireCalls={} acquireCpuMs={:.3f} presentCalls={} presentCallCpuMs={:.3f} presentWaitCalls={} presentWaitMs={:.3f} barriers={} layoutTransitions=unavailable beginRenderPasses={} swapchainRecreates={} gpuTimeMs=unavailable gpuReason=timestamp-instrumentation-not-enabled coveragePct=0 droppedSamples=0",
-				elapsedTime, fps, elapsedFrames, drawCallsPerFrame, renderFrameMs, commandIdleMs, nonIdleMs,
-				TimerValueToMilliseconds(performanceMonitor.gpuTime_fenceTime),
-				TimerValueToMilliseconds(performanceMonitor.vk.commandBufferFenceWaitTime),
-				TimerValueToMilliseconds(performanceMonitor.gpuTime_waitForAsync),
-				TimerValueToMilliseconds(performanceMonitor.gpuTime_shaderCreate),
-				pipelineCount, pipelineCreations, performanceMonitor.vk.numVulkanPipelineBindsPerFrame.get(),
-				performanceMonitor.vk.numQueueSubmitsPerFrame.get(),
-				performanceMonitor.vk.numSubmittedCommandBuffersPerFrame.get(), submitMs,
-				performanceMonitor.vk.numAcquireCallsPerFrame.get(), acquireMs,
-				performanceMonitor.vk.numPresentCallsPerFrame.get(), presentCallMs,
-				performanceMonitor.vk.numPresentWaitsPerFrame.get(), presentWaitMs,
-				performanceMonitor.vk.numDrawBarriersPerFrame.get(),
-				performanceMonitor.vk.numBeginRenderpassPerFrame.get(),
-				performanceMonitor.vk.numSwapchainRecreatesPerFrame.get());
+				elapsedTime, s_diagnosticWindow.frames * 1000.0 / elapsedTime, s_diagnosticWindow.frames, drawCallsPerFrame,
+				s_diagnosticWindow.times[0] / s_diagnosticWindow.frames,
+				s_diagnosticWindow.times[1] / s_diagnosticWindow.frames,
+				std::max(s_diagnosticWindow.times[0] - s_diagnosticWindow.times[1], 0.0) / s_diagnosticWindow.frames,
+				s_diagnosticWindow.times[2] / s_diagnosticWindow.frames,
+				s_diagnosticWindow.times[3] / s_diagnosticWindow.frames,
+				s_diagnosticWindow.times[4] / s_diagnosticWindow.frames,
+				s_diagnosticWindow.times[5] / s_diagnosticWindow.frames,
+				pipelineCount, pipelineCreations, s_diagnosticWindow.counters[8],
+				s_diagnosticWindow.counters[0], s_diagnosticWindow.counters[1], s_diagnosticWindow.times[6],
+				s_diagnosticWindow.counters[2], s_diagnosticWindow.times[7],
+				s_diagnosticWindow.counters[3], s_diagnosticWindow.times[8],
+				s_diagnosticWindow.counters[4], s_diagnosticWindow.times[9],
+				s_diagnosticWindow.counters[6], s_diagnosticWindow.counters[7], s_diagnosticWindow.counters[5]);
+			s_diagnosticWindow = {};
 			if (GetConfig().overlay.debug && !s_frameTimeSamples.empty())
 			{
 				const auto countAbove = [](const std::vector<double>& values, double threshold) {
@@ -531,12 +564,6 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.vk.numVulkanPipelineUnavailableUsesPerFrame.reset();
 	performanceMonitor.vk.numVulkanPipelineBindsPerFrame.reset();
 	performanceMonitor.vk.numVulkanPipelineRedundantBindSkipsPerFrame.reset();
-	performanceMonitor.vk.numQueueSubmitsPerFrame.reset();
-	performanceMonitor.vk.numSubmittedCommandBuffersPerFrame.reset();
-	performanceMonitor.vk.numAcquireCallsPerFrame.reset();
-	performanceMonitor.vk.numPresentCallsPerFrame.reset();
-	performanceMonitor.vk.numPresentWaitsPerFrame.reset();
-	performanceMonitor.vk.numSwapchainRecreatesPerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsUnsupportedPacketPerFrame.reset();

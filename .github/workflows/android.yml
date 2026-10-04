@@ -87,6 +87,9 @@ jobs:
             echo "ANDROID_REQUIRE_RELEASE_SIGNING=true"
           } >> "$GITHUB_ENV"
 
+      - name: Test diagnostic ZIP comparison
+        run: python3 -m unittest discover -s tools -p 'test_compare_android_diagnostics.py'
+
       - name: Run tests and build nightly APK
         working-directory: src/android
         run: ./gradlew --no-daemon test assembleNightly --stacktrace

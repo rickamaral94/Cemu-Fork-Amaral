@@ -115,6 +115,7 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                     settingsSha256 = sha256(userDataDirectory.resolve("settings.xml")),
                     activeGraphicPacksSha256 = sha256Text(
                         logText.lineSequence().filter { it.contains("Activate graphic pack:") }
+                            .map { it.substringAfter("Activate graphic pack:").trim() }
                             .sorted().joinToString("\n"),
                     ),
                 ),
@@ -271,7 +272,7 @@ private fun sha256(file: File): String = if (file.isFile) {
     "unavailable"
 }
 
-private fun sha256Text(value: String): String = if (value.isEmpty()) "unavailable" else sha256Bytes(value.toByteArray())
+private fun sha256Text(value: String): String = sha256Bytes(value.toByteArray())
 
 private fun sha256Bytes(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
     .digest(bytes).joinToString("") { "%02x".format(it) }
