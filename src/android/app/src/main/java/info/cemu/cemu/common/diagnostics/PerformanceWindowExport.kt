@@ -1,0 +1,223 @@
+package info.cemu.cemu.common.diagnostics
+
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlin.math.ceil
+
+const val PERFORMANCE_WINDOW_SCHEMA_VERSION = 1
+const val PERFORMANCE_WINDOW_FILE_NAME = "performance-windows-v1.jsonl"
+
+@Serializable
+data class PerformanceWindow(
+    val schemaVersion: Int = PERFORMANCE_WINDOW_SCHEMA_VERSION,
+    val units: Map<String, String> = PERFORMANCE_WINDOW_UNITS,
+    val sequence: Int,
+    val durationMs: Double,
+    val fpsEffective: Double,
+    val frames: Int,
+    val drawCallsPerFrame: Int,
+    val renderCpuMs: Double,
+    val commandIdleMs: Double,
+    val nonIdleMs: Double,
+    val fenceWaitMs: Double,
+    val commandBufferFenceWaitMs: Double,
+    val asyncWaitMs: Double,
+    val shaderCreateMs: Double,
+    val pipelines: Int,
+    val pipelineCreations: Int,
+    val pipelineChanges: Int,
+    val queueSubmitCalls: Int,
+    val commandBuffers: Int,
+    val queueSubmitCpuMs: Double,
+    val acquireCalls: Int,
+    val acquireCpuMs: Double,
+    val presentCalls: Int,
+    val presentCallCpuMs: Double,
+    val presentWaitCalls: Int,
+    val presentWaitMs: Double,
+    val swapchainRecreates: Int,
+    val barriers: Int,
+    val beginRenderPasses: Int,
+    val gpuTimeMs: Double? = null,
+    val gpuUnavailableReason: String? = null,
+    val gpuCoveragePct: Double,
+    val droppedSamples: Int,
+    val frameMsMedian: Double? = null,
+    val frameMsP95: Double? = null,
+    val frameMsP99: Double? = null,
+    val frameMsMax: Double? = null,
+    val framesOver16_7Ms: Int? = null,
+    val framesOver33_3Ms: Int? = null,
+    val framesOver50Ms: Int? = null,
+    val instrumentationOverheadMs: Double? = null,
+)
+
+@Serializable
+data class MetricDistribution(
+    val median: Double,
+    val p95: Double,
+    val p99: Double,
+    val max: Double,
+)
+
+@Serializable
+data class PerformanceSessionSummary(
+    val windowCount: Int,
+    val frameTimeMs: MetricDistribution? = null,
+    val renderCpuMs: MetricDistribution? = null,
+    val gpuTimeMs: MetricDistribution? = null,
+    val gpuCoveragePct: Double,
+    val totalFrames: Int,
+    val totalQueueSubmits: Int,
+    val totalPresentCalls: Int,
+    val totalSwapchainRecreates: Int,
+    val droppedSamples: Int,
+    val totalPipelineCreations: Int = 0,
+    val framesOver16_7Ms: Int? = null,
+    val framesOver33_3Ms: Int? = null,
+    val framesOver50Ms: Int? = null,
+    val note: String = "presentCallCpuMs measures only the host call; it is not visual latency",
+)
+
+data class PerformanceWindowExport(
+    val windows: List<PerformanceWindow>,
+    val jsonLines: String?,
+    val summary: PerformanceSessionSummary,
+)
+
+fun exportPerformanceWindows(log: String?): PerformanceWindowExport {
+    if (log == null) {
+        return PerformanceWindowExport(emptyList(), null, emptyPerformanceSummary())
+    }
+    val baseWindows = log.lineSequence()
+        .filter { it.contains(WINDOW_PREFIX) }
+        .mapIndexedNotNull { index, line -> parsePerformanceWindow(line, index) }
+        .toList()
+    val detailed = log.lineSequence().filter { it.contains(DETAILED_PREFIX) }
+        .map(::parseDetailedWindow).toList()
+    val windows = baseWindows.mapIndexed { index, window ->
+        val detail = detailed.getOrNull(index) ?: return@mapIndexed window
+        window.copy(
+            frameMsMedian = detail["frameMedian"], frameMsP95 = detail["frameP95"],
+            frameMsP99 = detail["frameP99"], frameMsMax = detail["frameMax"],
+            framesOver16_7Ms = detail["over16_7"]?.toInt(),
+            framesOver33_3Ms = detail["over33_3"]?.toInt(),
+            framesOver50Ms = detail["over50"]?.toInt(),
+            instrumentationOverheadMs = detail["overheadMs"],
+        )
+    }
+    val jsonLines = windows.takeIf { it.isNotEmpty() }
+        ?.joinToString(separator = "\n", postfix = "\n") { WINDOW_JSON.encodeToString(it) }
+    return PerformanceWindowExport(windows, jsonLines, summarizePerformanceWindows(windows))
+}
+
+internal fun parsePerformanceWindow(line: String, sequence: Int): PerformanceWindow? {
+    val payload = line.substringAfter(WINDOW_PREFIX, missingDelimiterValue = "").trim()
+    if (payload.isEmpty()) return null
+    val values = payload.split(' ').mapNotNull { token ->
+        val separator = token.indexOf('=')
+        if (separator <= 0) null else token.substring(0, separator) to token.substring(separator + 1)
+    }.toMap()
+    fun double(name: String) = values[name]?.toDoubleOrNull()
+    fun int(name: String) = values[name]?.toIntOrNull()
+    return PerformanceWindow(
+        sequence = sequence,
+        durationMs = double("durationMs") ?: return null,
+        fpsEffective = double("fpsEffective") ?: return null,
+        frames = int("frames") ?: return null,
+        drawCallsPerFrame = int("drawCallsPerFrame") ?: 0,
+        renderCpuMs = double("renderCpuMs") ?: return null,
+        commandIdleMs = double("commandIdleMs") ?: return null,
+        nonIdleMs = double("nonIdleMs") ?: return null,
+        fenceWaitMs = double("fenceWaitMs") ?: return null,
+        commandBufferFenceWaitMs = double("commandBufferFenceWaitMs") ?: 0.0,
+        asyncWaitMs = double("asyncWaitMs") ?: return null,
+        shaderCreateMs = double("shaderCreateMs") ?: return null,
+        pipelines = int("pipelines") ?: 0,
+        pipelineCreations = int("pipelineCreations") ?: 0,
+        pipelineChanges = int("pipelineChanges") ?: 0,
+        queueSubmitCalls = int("queueSubmitCalls") ?: return null,
+        commandBuffers = int("commandBuffers") ?: return null,
+        queueSubmitCpuMs = double("queueSubmitCpuMs") ?: return null,
+        acquireCalls = int("acquireCalls") ?: return null,
+        acquireCpuMs = double("acquireCpuMs") ?: return null,
+        presentCalls = int("presentCalls") ?: return null,
+        presentCallCpuMs = double("presentCallCpuMs") ?: return null,
+        presentWaitCalls = int("presentWaitCalls") ?: return null,
+        presentWaitMs = double("presentWaitMs") ?: return null,
+        swapchainRecreates = int("swapchainRecreates") ?: return null,
+        barriers = int("barriers") ?: 0,
+        beginRenderPasses = int("beginRenderPasses") ?: 0,
+        gpuTimeMs = double("gpuTimeMs"),
+        gpuUnavailableReason = values["gpuReason"]?.takeUnless { it == "none" },
+        gpuCoveragePct = double("coveragePct") ?: 0.0,
+        droppedSamples = int("droppedSamples") ?: 0,
+    )
+}
+
+fun summarizePerformanceWindows(windows: List<PerformanceWindow>): PerformanceSessionSummary {
+    if (windows.isEmpty()) return emptyPerformanceSummary()
+    val frameTimes = windows.mapNotNull { window -> window.frameMsMedian ?: window.fpsEffective.takeIf { it > 0.0 }?.let { 1000.0 / it } }
+    val gpuTimes = windows.mapNotNull { it.gpuTimeMs }
+    return PerformanceSessionSummary(
+        windowCount = windows.size,
+        frameTimeMs = distribution(frameTimes),
+        renderCpuMs = distribution(windows.map { it.renderCpuMs }),
+        gpuTimeMs = distribution(gpuTimes),
+        gpuCoveragePct = windows.map { it.gpuCoveragePct }.average(),
+        totalFrames = windows.sumOf { it.frames },
+        totalQueueSubmits = windows.sumOf { it.queueSubmitCalls },
+        totalPresentCalls = windows.sumOf { it.presentCalls },
+        totalSwapchainRecreates = windows.sumOf { it.swapchainRecreates },
+        droppedSamples = windows.sumOf { it.droppedSamples },
+        totalPipelineCreations = windows.sumOf { it.pipelineCreations },
+        framesOver16_7Ms = windows.mapNotNull { it.framesOver16_7Ms }.takeIf { it.isNotEmpty() }?.sum(),
+        framesOver33_3Ms = windows.mapNotNull { it.framesOver33_3Ms }.takeIf { it.isNotEmpty() }?.sum(),
+        framesOver50Ms = windows.mapNotNull { it.framesOver50Ms }.takeIf { it.isNotEmpty() }?.sum(),
+    )
+}
+
+private fun distribution(values: List<Double>): MetricDistribution? {
+    if (values.isEmpty()) return null
+    val sorted = values.sorted()
+    fun percentile(value: Double): Double = sorted[(ceil(value * sorted.size).toInt() - 1).coerceIn(sorted.indices)]
+    return MetricDistribution(percentile(0.50), percentile(0.95), percentile(0.99), sorted.last())
+}
+
+private fun emptyPerformanceSummary() = PerformanceSessionSummary(
+    windowCount = 0,
+    gpuCoveragePct = 0.0,
+    totalFrames = 0,
+    totalQueueSubmits = 0,
+    totalPresentCalls = 0,
+    totalSwapchainRecreates = 0,
+    droppedSamples = 0,
+)
+
+private const val WINDOW_PREFIX = "Cemu Vulkan window v1:"
+private const val DETAILED_PREFIX = "Cemu Vulkan detailed window v1:"
+
+private fun parseDetailedWindow(line: String): Map<String, Double> {
+    val result = mutableMapOf<String, Double>()
+    Regex("frameMs=\\[median:([0-9.]+),p95:([0-9.]+),p99:([0-9.]+),max:([0-9.]+)]")
+        .find(line)?.groupValues?.drop(1)?.map { it.toDouble() }?.let {
+            result["frameMedian"] = it[0]; result["frameP95"] = it[1]
+            result["frameP99"] = it[2]; result["frameMax"] = it[3]
+        }
+    Regex("over16_7=(\\d+) over33_3=(\\d+) over50=(\\d+).+overheadMs=([0-9.]+)")
+        .find(line)?.groupValues?.drop(1)?.map { it.toDouble() }?.let {
+            result["over16_7"] = it[0]; result["over33_3"] = it[1]
+            result["over50"] = it[2]; result["overheadMs"] = it[3]
+        }
+    return result
+}
+private val WINDOW_JSON = Json { encodeDefaults = true }
+private val PERFORMANCE_WINDOW_UNITS = mapOf(
+    "durationMs" to "ms",
+    "fpsEffective" to "frames/s",
+    "*CpuMs" to "ms/window",
+    "gpuTimeMs" to "ms/window",
+    "gpuCoveragePct" to "percent",
+    "*Calls" to "count/window",
+)

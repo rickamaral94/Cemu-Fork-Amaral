@@ -355,3 +355,47 @@ transfers and separates color-buffer-to-scanbuffer copies, color/depth clears,
 and surface copies. Nine timer pairs per heavy frame are sufficiently sparse to
 avoid sampling error while identifying the operation responsible before any
 transfer or synchronization behavior is changed.
+
+## Diagnóstico comparável de drivers Vulkan
+
+O schema 3 do pacote mantém `report.json` e `log.txt` e acrescenta
+`performance-windows-v1.jsonl`. Cada linha representa uma janela de cerca de um
+segundo, declara unidades e separa CPU do core, tempo dentro de chamadas Vulkan,
+esperas e cadência observada. `presentCallCpuMs` mede somente a duração host de
+`vkQueuePresentKHR`; não é latência visual nem confirmação de scan-out.
+
+O modo normal mantém contadores e agregados leves. Para uma captura A/B detalhada,
+ative **Overlay > Debug**, que também calcula distribuições limitadas em memória
+para os frames da janela e registra a sobrecarga do diagnóstico. O menu durante a
+emulação oferece **Start diagnostic scene** e **End diagnostic scene**; use-os no
+mesmo ponto de cada execução.
+
+### Protocolo Odin2 Portal
+
+1. Use o mesmo APK/commit, Wind Waker HD, save, câmera, resolução, graphic packs,
+   configuração, refresh da tela e estado de cache. Feche outros aplicativos.
+2. Instale e selecione Turnip Amaral v4.7.3.1. Reinicie o Cemu, carregue a cena,
+   aguarde cinco minutos de aquecimento, inicie o marcador e permaneça parado por
+   cinco minutos. Encerre o marcador, saia normalmente e exporte o ZIP.
+3. Repita após resfriamento equivalente com v4.7.4.1. Para reduzir viés térmico,
+   faça uma segunda rodada em ordem inversa (4.7.4.1 e depois 4.7.3.1).
+4. Compare os ZIPs com
+   `python3 tools/compare_android_diagnostics.py sessao-a.zip sessao-b.zip`.
+   Uma divergência de commit, Title ID, hash de configuração ou graphic packs
+   torna a comparação não equivalente. Também examine estado térmico, cobertura
+   GPU, waits, submits e criação de pipelines antes de atribuir causalidade.
+
+### Limitações declaradas
+
+- O pacote registra separadamente metadados declarados pelo AdrenoTools e dados
+  efetivamente reportados por `vkGetPhysicalDeviceProperties2`.
+- Esta revisão registra `gpuTimeMs=unavailable` com o motivo. Ela não substitui
+  timestamps ausentes por tempo de CPU. Query pools de timestamps assíncronos
+  permanecem pendentes até que o resultado possa ser recuperado após fence sem
+  `vkDeviceWaitIdle` ou leitura síncrona no caminho normal.
+- As APIs públicas do Android não oferecem temperatura/clocks detalhados em todo
+  aparelho. Campos sem fonte confiável são marcados `unavailable`; os arquivos
+  KGSL continuam apenas como telemetria oportunista e não como contrato Android.
+- O resumo de sessão usa janelas exportadas. No modo detalhado, mediana/p95/p99,
+  máximos e limites de 16,7/33,3/50 ms são calculados a partir dos frames mantidos
+  somente até o fechamento de cada janela.

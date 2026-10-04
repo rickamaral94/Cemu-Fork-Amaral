@@ -142,6 +142,9 @@ class EmulationActivity : AppCompatActivity() {
                         setMotionSensorEnabled = inputManager::setDeviceMotionEnabled,
                         onQuit = ::onQuit,
                         setInputListeningEnabled = { processInputEvents = it },
+                        onDiagnosticSceneMarker = { marker ->
+                            NativeLogging.log("Cemu diagnostic scene: marker=$marker elapsedRealtimeMs=${android.os.SystemClock.elapsedRealtime()}")
+                        },
                     )
                 }
             }

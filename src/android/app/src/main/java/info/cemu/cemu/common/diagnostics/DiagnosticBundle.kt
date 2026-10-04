@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-const val DIAGNOSTIC_SCHEMA_VERSION = 2
+const val DIAGNOSTIC_SCHEMA_VERSION = 3
 const val MAX_DIAGNOSTIC_LOG_BYTES = 4L * 1024L * 1024L
 
 @Serializable
@@ -20,6 +20,8 @@ data class DiagnosticReport(
     val graphics: DiagnosticGraphicsInfo,
     val settings: DiagnosticSettingsInfo,
     val log: DiagnosticLogInfo,
+    val session: Map<String, String> = emptyMap(),
+    val performance: PerformanceSessionSummary = PerformanceSessionSummary(0, gpuCoveragePct = 0.0, totalFrames = 0, totalQueueSubmits = 0, totalPresentCalls = 0, totalSwapchainRecreates = 0, droppedSamples = 0),
 )
 
 @Serializable
@@ -28,6 +30,7 @@ data class DiagnosticAppInfo(
     val versionName: String,
     val versionCode: Int,
     val buildType: String,
+    val commit: String,
 )
 
 @Serializable
@@ -42,12 +45,17 @@ data class DiagnosticDeviceInfo(
     val displayWidthPixels: Int?,
     val displayHeightPixels: Int?,
     val displayRefreshRateHz: Float?,
+    val charging: String,
+    val thermalStatus: String,
+    val batteryTemperatureCelsius: String,
 )
 
 @Serializable
 data class DiagnosticGraphicsInfo(
     val driverMode: String,
     val customDriver: DiagnosticDriverInfo? = null,
+    val vulkanReported: Map<String, String> = emptyMap(),
+    val presentation: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -66,6 +74,9 @@ data class DiagnosticSettingsInfo(
     val accurateBarriers: Boolean,
     val upscalingFilter: Int,
     val downscalingFilter: Int,
+    val diagnosticMode: String,
+    val settingsSha256: String,
+    val activeGraphicPacksSha256: String,
 )
 
 @Serializable
@@ -102,11 +113,18 @@ fun prepareDiagnosticLog(
 
     val sourceBytes = logFile.length()
     val bytesToRead = minOf(sourceBytes, maxBytes).toInt()
-    val rawBytes = ByteArray(bytesToRead)
+    val headBytes = if (sourceBytes > maxBytes && maxBytes >= 64L * 1024L) minOf(256 * 1024, bytesToRead / 4) else 0
+    val tailBytes = bytesToRead - headBytes
+    val rawBytes = ByteArray(tailBytes)
+    val rawHead = ByteArray(headBytes)
     var startsAtLineBoundary = true
 
     RandomAccessFile(logFile, "r").use { input ->
-        val startOffset = sourceBytes - bytesToRead
+        if (headBytes > 0) {
+            input.seek(0)
+            input.readFully(rawHead)
+        }
+        val startOffset = sourceBytes - tailBytes
         if (startOffset > 0) {
             input.seek(startOffset - 1)
             startsAtLineBoundary = input.read() == '\n'.code
@@ -122,7 +140,11 @@ fun prepareDiagnosticLog(
     } else {
         decodedLog
     }
-    val sanitizedLog = sanitizeDiagnosticLog(rawLog)
+    val combinedLog = if (rawHead.isNotEmpty()) {
+        String(rawHead, StandardCharsets.UTF_8).substringBeforeLast('\n', "") +
+                "\n--- diagnostic log middle omitted ---\n" + rawLog
+    } else rawLog
+    val sanitizedLog = sanitizeDiagnosticLog(combinedLog)
     val sanitizedBytes = sanitizedLog.toByteArray(StandardCharsets.UTF_8)
 
     return PreparedDiagnosticLog(
@@ -137,6 +159,7 @@ fun writeDiagnosticBundle(
     destination: File,
     reportJson: String,
     preparedLog: PreparedDiagnosticLog,
+    additionalEntries: Map<String, String> = emptyMap(),
 ) {
     destination.parentFile?.let { parent ->
         if (!parent.isDirectory && !parent.mkdirs()) {
@@ -156,6 +179,7 @@ fun writeDiagnosticBundle(
         ZipOutputStream(temporaryFile.outputStream().buffered()).use { zip ->
             zip.writeEntry("report.json", reportJson)
             preparedLog.content?.let { zip.writeEntry("log.txt", it) }
+            additionalEntries.toSortedMap().forEach { (name, content) -> zip.writeEntry(name, content) }
         }
         if (!temporaryFile.renameTo(destination)) {
             throw IOException("Failed to finalize diagnostic bundle")

@@ -5,6 +5,10 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.BatteryManager
+import android.os.PowerManager
+import android.content.Intent
+import android.content.IntentFilter
 import android.provider.DocumentsContract
 import info.cemu.cemu.BuildConfig
 import info.cemu.cemu.common.android.context.internalFolder
@@ -17,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -44,6 +49,11 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
             val memoryInfo = ActivityManager.MemoryInfo().also { info ->
                 context.getSystemService(ActivityManager::class.java).getMemoryInfo(info)
             }
+            val performanceExport = exportPerformanceWindows(preparedLog.content)
+            val logText = preparedLog.content.orEmpty()
+            val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val batteryStatus = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val powerManager = context.getSystemService(PowerManager::class.java)
 
             val report = DiagnosticReport(
                 generatedAtUtc = Instant.now().toString(),
@@ -52,6 +62,7 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                     versionName = BuildConfig.VERSION_NAME,
                     versionCode = BuildConfig.VERSION_CODE,
                     buildType = BuildConfig.BUILD_TYPE,
+                    commit = BuildConfig.VERSION_NAME.substringBefore('-'),
                 ),
                 device = DiagnosticDeviceInfo(
                     manufacturer = Build.MANUFACTURER,
@@ -64,6 +75,18 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                     displayWidthPixels = displayMode.physicalWidth,
                     displayHeightPixels = displayMode.physicalHeight,
                     displayRefreshRateHz = displayMode.refreshRate,
+                    charging = when (batteryStatus) {
+                        BatteryManager.BATTERY_STATUS_CHARGING -> "charging"
+                        BatteryManager.BATTERY_STATUS_FULL -> "full"
+                        BatteryManager.BATTERY_STATUS_DISCHARGING -> "discharging"
+                        BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "not-charging"
+                        else -> "unavailable"
+                    },
+                    thermalStatus = runCatching { powerManager.currentThermalStatus.toString() }
+                        .getOrDefault("unavailable"),
+                    batteryTemperatureCelsius = battery?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
+                        ?.takeUnless { it == Int.MIN_VALUE }?.let { (it / 10.0).toString() }
+                        ?: "unavailable",
                 ),
                 graphics = DiagnosticGraphicsInfo(
                     driverMode = when {
@@ -80,6 +103,8 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                             minApi = metadata.minApi,
                         )
                     },
+                    vulkanReported = extractVulkanReportedInfo(logText),
+                    presentation = extractPresentationInfo(logText),
                 ),
                 settings = DiagnosticSettingsInfo(
                     asyncShaderCompile = NativeSettings.getAsyncShaderCompile(),
@@ -87,6 +112,12 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                     accurateBarriers = NativeSettings.getAccurateBarriers(),
                     upscalingFilter = NativeSettings.getUpscalingFilter(),
                     downscalingFilter = NativeSettings.getDownscalingFilter(),
+                    diagnosticMode = if (NativeSettings.isOverlayDebugEnabled()) "detailed" else "normal",
+                    settingsSha256 = sha256(userDataDirectory.resolve("settings.xml")),
+                    activeGraphicPacksSha256 = sha256Text(
+                        logText.lineSequence().filter { it.contains("Activate graphic pack:") }
+                            .sorted().joinToString("\n"),
+                    ),
                 ),
                 log = DiagnosticLogInfo(
                     included = preparedLog.content != null,
@@ -96,6 +127,8 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                     truncated = preparedLog.truncated,
                     redacted = true,
                 ),
+                session = extractSessionInfo(logText),
+                performance = performanceExport.summary,
             )
 
             val diagnosticDirectory = context.internalFolder().resolve(DIAGNOSTIC_DIRECTORY)
@@ -106,7 +139,10 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
             )
             val reportJson = DIAGNOSTIC_JSON.encodeToString(report)
 
-            writeDiagnosticBundle(destination, reportJson, preparedLog)
+            val additionalEntries = buildMap {
+                performanceExport.jsonLines?.let { put(PERFORMANCE_WINDOW_FILE_NAME, it) }
+            }
+            writeDiagnosticBundle(destination, reportJson, preparedLog, additionalEntries)
             deleteOldBundles(diagnosticDirectory, keep = MAX_RETAINED_BUNDLES)
             destination
         }
@@ -180,3 +216,63 @@ private val DIAGNOSTIC_JSON = Json {
     prettyPrint = true
     encodeDefaults = true
 }
+
+internal fun extractVulkanReportedInfo(log: String): Map<String, String> {
+    val result = linkedMapOf<String, String>()
+    log.lineSequence().forEach { line ->
+        when {
+            line.contains("Using GPU:") -> result["deviceName"] = line.substringAfter("Using GPU:").trim()
+            line.contains("Driver version:") -> result["driverInfo"] = line.substringAfter("Driver version:").trim()
+            line.contains("Vulkan instance version:") -> result["instanceApiVersion"] = line.substringAfter("Vulkan instance version:").trim()
+            line.contains("Vulkan: Device properties") -> parseKeyValues(line.substringAfter("Vulkan: Device properties")).forEach(result::put)
+        }
+    }
+    if (result.isEmpty()) result["status"] = "unavailable: no Vulkan session in selected log"
+    return result
+}
+
+internal fun extractPresentationInfo(log: String): Map<String, String> {
+    val result = linkedMapOf<String, String>()
+    log.lineSequence().forEach { line ->
+        if (line.contains("Vulkan: Present mode")) parseKeyValues(line.substringAfter("Vulkan: Present mode")).forEach(result::put)
+        if (line.contains("Vulkan: Swapchain created")) parseKeyValues(line.substringAfter("Vulkan: Swapchain created")).forEach(result::put)
+    }
+    if (result.isEmpty()) result["status"] = "unavailable: no swapchain in selected log"
+    return result
+}
+
+internal fun extractSessionInfo(log: String): Map<String, String> {
+    val result = linkedMapOf(
+        "titleId" to "unavailable",
+        "titleName" to "unavailable",
+        "region" to "unavailable",
+        "internalResolution" to "unavailable",
+        "outputResolution" to "unavailable",
+        "sceneMarker" to "unavailable",
+    )
+    log.lineSequence().forEach { line ->
+        when {
+            line.contains("TitleId:") -> result["titleId"] = line.substringAfter("TitleId:").trim().replace("-", "")
+            line.contains("Title name:") -> result["titleName"] = line.substringAfter("Title name:").trim()
+            line.contains("TitleRegion:") -> result["region"] = line.substringAfter("TitleRegion:").trim()
+            line.contains("Vulkan: Swapchain created") -> result["outputResolution"] =
+                Regex("extent=(\\d+x\\d+)").find(line)?.groupValues?.get(1) ?: result.getValue("outputResolution")
+            line.contains("Cemu diagnostic scene:") -> result["sceneMarker"] = line.substringAfter("Cemu diagnostic scene:").trim()
+        }
+    }
+    return result
+}
+
+private fun parseKeyValues(text: String): Map<String, String> =
+    Regex("(\\w+)=(\\[[^]]*]|[^ ]+)").findAll(text).associate { it.groupValues[1] to it.groupValues[2] }
+
+private fun sha256(file: File): String = if (file.isFile) {
+    runCatching { sha256Bytes(file.readBytes()) }.getOrDefault("unavailable")
+} else {
+    "unavailable"
+}
+
+private fun sha256Text(value: String): String = if (value.isEmpty()) "unavailable" else sha256Bytes(value.toByteArray())
+
+private fun sha256Bytes(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+    .digest(bytes).joinToString("") { "%02x".format(it) }

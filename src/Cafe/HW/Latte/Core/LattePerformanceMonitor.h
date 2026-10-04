@@ -265,6 +265,19 @@ typedef struct
 		LattePerfStatTimer vulkanPipelineBindTime;
 		LattePerfStatTimer vulkanFirstDrawTime;
 		LattePerfStatTimer vulkanContinuedDrawTime;
+		// CPU time spent inside Vulkan entry points. These durations describe host
+		// calls and blocking only; present call time is not display latency.
+		LattePerfStatTimer queueSubmitTime;
+		LattePerfStatTimer acquireImageTime;
+		LattePerfStatTimer queuePresentTime;
+		LattePerfStatTimer presentWaitTime;
+		LattePerfStatTimer commandBufferFenceWaitTime;
+		LattePerfStatCounter numQueueSubmitsPerFrame;
+		LattePerfStatCounter numSubmittedCommandBuffersPerFrame;
+		LattePerfStatCounter numAcquireCallsPerFrame;
+		LattePerfStatCounter numPresentCallsPerFrame;
+		LattePerfStatCounter numPresentWaitsPerFrame;
+		LattePerfStatCounter numSwapchainRecreatesPerFrame;
 		LattePerfStatCounter numFastDrawPassEndsSamplerChangePerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedType3PerFrame;
 		LattePerfStatCounter numFastDrawPassEndsUnsupportedPacketPerFrame;

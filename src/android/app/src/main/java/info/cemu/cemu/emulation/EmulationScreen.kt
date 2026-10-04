@@ -80,6 +80,7 @@ fun EmulationScreen(
     setMotionSensorEnabled: (Boolean) -> Unit,
     setInputListeningEnabled: (Boolean) -> Unit,
     onQuit: () -> Unit,
+    onDiagnosticSceneMarker: (String) -> Unit,
     viewModel: EmulationViewModel = viewModel(
         factory = EmulationViewModel.Factory, extras = MutableCreationExtras().apply {
             set(EmulationViewModel.LAUNCH_PATH_KEY, gamePath)
@@ -91,6 +92,7 @@ fun EmulationScreen(
     var showQuitConfirmationDialog by remember { mutableStateOf(false) }
     var inputOverlayInputMode by rememberSaveable { mutableStateOf(DEFAULT) }
     var showEmulatedUSBDevices by remember { mutableStateOf(false) }
+    var diagnosticSceneActive by rememberSaveable { mutableStateOf(false) }
 
     val emulationError by viewModel.emulationError.collectAsState()
     val isEmulationInitialized by viewModel.isEmulationInitialized.collectAsState()
@@ -198,6 +200,12 @@ fun EmulationScreen(
                             showEmulatedUSBDevices = true
                             closeDrawer()
                         },
+                        onDiagnosticSceneMarker = {
+                            diagnosticSceneActive = !diagnosticSceneActive
+                            onDiagnosticSceneMarker(if (diagnosticSceneActive) "start" else "end")
+                            closeDrawer()
+                        },
+                        diagnosticSceneActive = diagnosticSceneActive,
                     )
                 }
             }
@@ -316,6 +324,8 @@ private fun EmulationSideMenuContent(
     onEditInputOverlay: () -> Unit,
     onResetInputOverlay: () -> Unit,
     onQuit: () -> Unit,
+    onDiagnosticSceneMarker: () -> Unit,
+    diagnosticSceneActive: Boolean,
 ) {
     CheckboxItem(
         label = tr("Enable motion"),
@@ -356,6 +366,11 @@ private fun EmulationSideMenuContent(
         label = tr("Reset input overlay"),
         enabled = sideMenuState.isInputOverlayVisible,
         onClick = onResetInputOverlay,
+    )
+
+    TextButtonItem(
+        label = tr(if (diagnosticSceneActive) "End diagnostic scene" else "Start diagnostic scene"),
+        onClick = onDiagnosticSceneMarker,
     )
 
     TextButtonItem(

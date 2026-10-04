@@ -2,6 +2,7 @@
 #include "Cafe/HW/Latte/Core/LatteOverlay.h"
 #include "WindowSystem.h"
 #include "Cemu/Logging/CemuLogging.h"
+#include "config/CemuConfig.h"
 
 performanceMonitor_t performanceMonitor{};
 
@@ -9,6 +10,20 @@ namespace
 {
 constexpr uint32 kTelemetryLogIntervalMs = 2000;
 uint32 s_lastTelemetryLog = 0;
+std::vector<double> s_frameTimeSamples;
+std::vector<double> s_renderCpuSamples;
+uint64 s_diagnosticOverheadCycles = 0;
+uint64 s_previousFrameEnd = 0;
+uint32 s_previousPipelineCount = 0;
+
+double Percentile(std::vector<double> values, double percentile)
+{
+	if (values.empty())
+		return 0.0;
+	std::sort(values.begin(), values.end());
+	const size_t index = std::min<size_t>(static_cast<size_t>(std::ceil(percentile * values.size())) - 1, values.size() - 1);
+	return values[index];
+}
 
 double TimerValueToMilliseconds(LattePerfStatTimer& timer)
 {
@@ -19,6 +34,7 @@ double TimerValueToMilliseconds(LattePerfStatTimer& timer)
 
 void LattePerformanceMonitor_frameEnd()
 {
+	const uint64 diagnosticStart = PPCTimer_getRawTsc();
 	// per-frame stats
 	performanceMonitor.gpuTime_shaderCreate.frameFinished();
 	performanceMonitor.gpuTime_frameTime.frameFinished();
@@ -41,6 +57,22 @@ void LattePerformanceMonitor_frameEnd()
 	performanceMonitor.vk.vulkanPipelineBindTime.frameFinished();
 	performanceMonitor.vk.vulkanFirstDrawTime.frameFinished();
 	performanceMonitor.vk.vulkanContinuedDrawTime.frameFinished();
+	performanceMonitor.vk.queueSubmitTime.frameFinished();
+	performanceMonitor.vk.acquireImageTime.frameFinished();
+	performanceMonitor.vk.queuePresentTime.frameFinished();
+	performanceMonitor.vk.presentWaitTime.frameFinished();
+	performanceMonitor.vk.commandBufferFenceWaitTime.frameFinished();
+
+	if (GetConfig().overlay.debug)
+	{
+		s_renderCpuSamples.emplace_back(TimerValueToMilliseconds(performanceMonitor.gpuTime_frameTime));
+		const uint64 frameEnd = PPCTimer_getRawTsc();
+		if (s_previousFrameEnd != 0)
+			s_frameTimeSamples.emplace_back(static_cast<double>(PPCTimer_tscToMicroseconds(frameEnd - s_previousFrameEnd)) / 1000.0);
+		s_previousFrameEnd = frameEnd;
+	}
+	else
+		s_previousFrameEnd = 0;
 
 	uint32 elapsedTime = GetTickCount() - performanceMonitor.cycle[performanceMonitor.cycleIndex].lastUpdate;
 	if (elapsedTime >= 1000)
@@ -141,6 +173,13 @@ void LattePerformanceMonitor_frameEnd()
 			const double genericPathMs = std::max(commandBufferMs - continuousPassMs, 0.0);
 			const uint32 drawCallsPerFrame = drawCallCounter / elapsedFrames;
 			const uint32 fastDrawCallsPerFrame = fastDrawCallCounter / elapsedFrames;
+			const double submitMs = TimerValueToMilliseconds(performanceMonitor.vk.queueSubmitTime);
+			const double acquireMs = TimerValueToMilliseconds(performanceMonitor.vk.acquireImageTime);
+			const double presentCallMs = TimerValueToMilliseconds(performanceMonitor.vk.queuePresentTime);
+			const double presentWaitMs = TimerValueToMilliseconds(performanceMonitor.vk.presentWaitTime);
+			const uint32 pipelineCount = performanceMonitor.vk.numGraphicPipelines.get();
+			const uint32 pipelineCreations = pipelineCount >= s_previousPipelineCount ? pipelineCount - s_previousPipelineCount : 0;
+			s_previousPipelineCount = pipelineCount;
 			LatteOverlay_updateStats(fps, drawCallsPerFrame, fastDrawCallsPerFrame);
 			WindowSystem::UpdateWindowTitles(false, false, fps);
 			const uint32 now = GetTickCount();
@@ -155,6 +194,40 @@ void LattePerformanceMonitor_frameEnd()
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_waitForAsync),
 					TimerValueToMilliseconds(performanceMonitor.gpuTime_shaderCreate));
 			}
+			cemuLog_log(LogType::Force,
+				"Cemu Vulkan window v1: durationMs={} fpsEffective={:.2f} frames={} drawCallsPerFrame={} renderCpuMs={:.3f} commandIdleMs={:.3f} nonIdleMs={:.3f} fenceWaitMs={:.3f} commandBufferFenceWaitMs={:.3f} asyncWaitMs={:.3f} shaderCreateMs={:.3f} pipelines={} pipelineCreations={} pipelineChanges={} queueSubmitCalls={} commandBuffers={} queueSubmitCpuMs={:.3f} acquireCalls={} acquireCpuMs={:.3f} presentCalls={} presentCallCpuMs={:.3f} presentWaitCalls={} presentWaitMs={:.3f} barriers={} layoutTransitions=unavailable beginRenderPasses={} swapchainRecreates={} gpuTimeMs=unavailable gpuReason=timestamp-instrumentation-not-enabled coveragePct=0 droppedSamples=0",
+				elapsedTime, fps, elapsedFrames, drawCallsPerFrame, renderFrameMs, commandIdleMs, nonIdleMs,
+				TimerValueToMilliseconds(performanceMonitor.gpuTime_fenceTime),
+				TimerValueToMilliseconds(performanceMonitor.vk.commandBufferFenceWaitTime),
+				TimerValueToMilliseconds(performanceMonitor.gpuTime_waitForAsync),
+				TimerValueToMilliseconds(performanceMonitor.gpuTime_shaderCreate),
+				pipelineCount, pipelineCreations, performanceMonitor.vk.numVulkanPipelineBindsPerFrame.get(),
+				performanceMonitor.vk.numQueueSubmitsPerFrame.get(),
+				performanceMonitor.vk.numSubmittedCommandBuffersPerFrame.get(), submitMs,
+				performanceMonitor.vk.numAcquireCallsPerFrame.get(), acquireMs,
+				performanceMonitor.vk.numPresentCallsPerFrame.get(), presentCallMs,
+				performanceMonitor.vk.numPresentWaitsPerFrame.get(), presentWaitMs,
+				performanceMonitor.vk.numDrawBarriersPerFrame.get(),
+				performanceMonitor.vk.numBeginRenderpassPerFrame.get(),
+				performanceMonitor.vk.numSwapchainRecreatesPerFrame.get());
+			if (GetConfig().overlay.debug && !s_frameTimeSamples.empty())
+			{
+				const auto countAbove = [](const std::vector<double>& values, double threshold) {
+					return std::count_if(values.begin(), values.end(), [threshold](double value) { return value > threshold; });
+				};
+				cemuLog_log(LogType::Force,
+					"Cemu Vulkan detailed window v1: frameMs=[median:{:.3f},p95:{:.3f},p99:{:.3f},max:{:.3f}] cpuMs=[median:{:.3f},p95:{:.3f},p99:{:.3f},max:{:.3f}] over16_7={} over33_3={} over50={} samples={} overheadMs={:.3f}",
+					Percentile(s_frameTimeSamples, 0.50), Percentile(s_frameTimeSamples, 0.95),
+					Percentile(s_frameTimeSamples, 0.99), *std::max_element(s_frameTimeSamples.begin(), s_frameTimeSamples.end()),
+					Percentile(s_renderCpuSamples, 0.50), Percentile(s_renderCpuSamples, 0.95),
+					Percentile(s_renderCpuSamples, 0.99), *std::max_element(s_renderCpuSamples.begin(), s_renderCpuSamples.end()),
+					countAbove(s_frameTimeSamples, 16.7), countAbove(s_frameTimeSamples, 33.3),
+					countAbove(s_frameTimeSamples, 50.0), s_frameTimeSamples.size(),
+					static_cast<double>(PPCTimer_tscToMicroseconds(s_diagnosticOverheadCycles)) / 1000.0);
+			}
+			s_frameTimeSamples.clear();
+			s_renderCpuSamples.clear();
+			s_diagnosticOverheadCycles = 0;
 			if (fps < 28.0)
 			{
 				cemuLog_log(LogType::Force,
@@ -365,6 +438,7 @@ void LattePerformanceMonitor_frameEnd()
 			}
 		}
 	}
+	s_diagnosticOverheadCycles += PPCTimer_getRawTsc() - diagnosticStart;
 }
 
 void LattePerformanceMonitor_frameBegin()
@@ -457,6 +531,12 @@ void LattePerformanceMonitor_frameBegin()
 	performanceMonitor.vk.numVulkanPipelineUnavailableUsesPerFrame.reset();
 	performanceMonitor.vk.numVulkanPipelineBindsPerFrame.reset();
 	performanceMonitor.vk.numVulkanPipelineRedundantBindSkipsPerFrame.reset();
+	performanceMonitor.vk.numQueueSubmitsPerFrame.reset();
+	performanceMonitor.vk.numSubmittedCommandBuffersPerFrame.reset();
+	performanceMonitor.vk.numAcquireCallsPerFrame.reset();
+	performanceMonitor.vk.numPresentCallsPerFrame.reset();
+	performanceMonitor.vk.numPresentWaitsPerFrame.reset();
+	performanceMonitor.vk.numSwapchainRecreatesPerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.reset();
 	performanceMonitor.vk.numFastDrawPassEndsUnsupportedPacketPerFrame.reset();
