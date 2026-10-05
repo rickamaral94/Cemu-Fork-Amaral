@@ -69,9 +69,17 @@ internal fun logSessionConfiguration(driverPath: String?, titleId: String, profi
             requestedCustomDriver = driver,
             settings = settings.copy(emulationSettingsSha256 = normalizedHash),
         )
-        NativeLogging.log(SESSION_CONFIGURATION_PREFIX + SESSION_JSON.encodeToString(snapshot))
+        NativeLogging.log(SESSION_CONFIGURATION_PREFIX + encodeSessionConfiguration(snapshot))
     }.onFailure { NativeLogging.log("Cemu session configuration unavailable: capture-failed") }
 }
+
+internal fun encodeSessionConfiguration(snapshot: SessionConfiguration): String =
+    // A four-component package version can resemble an IP address. Escape only
+    // numeric version separators in JSON; other metadata keeps normal redaction.
+    Regex("(\"packageVersion\":\")([0-9]+(?:\\.[0-9]+){1,3})(\")")
+        .replace(SESSION_JSON.encodeToString(snapshot)) { match ->
+            match.groupValues[1] + match.groupValues[2].replace(".", "\\u002e") + match.groupValues[3]
+        }
 
 internal fun extractSessionConfiguration(log: String, titleId: String): SessionConfiguration? {
     // Do not fall back to an older valid marker after a malformed latest marker.

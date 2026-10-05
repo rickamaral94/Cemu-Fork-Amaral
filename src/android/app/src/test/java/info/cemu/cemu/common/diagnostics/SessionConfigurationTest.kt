@@ -1,7 +1,5 @@
 package info.cemu.cemu.common.diagnostics
 
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -24,7 +22,18 @@ class SessionConfigurationTest {
             "session-start", "normalized-a", "profile-a"),
     )
 
-    private fun line(value: SessionConfiguration) = SESSION_CONFIGURATION_PREFIX + Json.encodeToString(value)
+    private fun line(value: SessionConfiguration) = SESSION_CONFIGURATION_PREFIX + encodeSessionConfiguration(value)
+
+    @Test
+    fun numericPackageVersionSurvivesLogRedactionWithoutExposingIdentifiers() {
+        val value = snapshot().copy(requestedCustomDriver = DiagnosticDriverInfo(
+            "test@example.com", "4.7.4.1", "Mesa", "Vulkan 1.4.363", 29,
+        ))
+        val log = sanitizeDiagnosticLog(line(value))
+        val captured = extractSessionConfiguration(log, titleId)!!
+        assertEquals("4.7.4.1", captured.requestedCustomDriver!!.packageVersion)
+        assertEquals("<email>", captured.requestedCustomDriver.name)
+    }
 
     @Test
     fun archivedSessionRetainsItsDriverAndSettingsAfterCurrentSessionChanges() {
