@@ -260,7 +260,11 @@ void* dlopen_vulkan_loader()
 #if BOOST_PLAT_ANDROID && defined(__aarch64__)
 	vulkan_so = load_custom_driver();
 	if (vulkan_so)
+	{
+		cemuLog_log(LogType::Force, "Vulkan: Android loader mode=custom");
 		return vulkan_so;
+	}
+	cemuLog_log(LogType::Force, "Vulkan: Android loader mode=system");
 #endif
 	vulkan_so = dlopen("libvulkan.so", RTLD_NOW);
 	if(!vulkan_so)

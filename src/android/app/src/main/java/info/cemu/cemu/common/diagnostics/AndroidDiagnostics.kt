@@ -4,14 +4,15 @@ import android.app.ActivityManager
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
+import android.os.BatteryManager
+import android.os.PowerManager
 import android.provider.DocumentsContract
 import info.cemu.cemu.BuildConfig
 import info.cemu.cemu.common.android.context.internalFolder
-import info.cemu.cemu.common.customdrivers.parseInstalledDrivers
 import info.cemu.cemu.nativeinterface.NativeActiveSettings
 import info.cemu.cemu.nativeinterface.NativeLogging
-import info.cemu.cemu.nativeinterface.NativeSettings
 import info.cemu.cemu.provider.DocumentsProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,22 +37,31 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
             val preparedLog = prepareDiagnosticLog(
                 selectedLog?.file ?: userDataDirectory.resolve(CURRENT_LOG_FILE_NAME),
             )
-            val selectedDriverPath = NativeSettings.getCustomDriverPath()
-            val selectedDriver = selectedDriverPath?.let { path ->
-                parseInstalledDrivers(Build.VERSION.SDK_INT).firstOrNull { it.path == path }
-            }
             val displayMode = context.display.mode
             val memoryInfo = ActivityManager.MemoryInfo().also { info ->
                 context.getSystemService(ActivityManager::class.java).getMemoryInfo(info)
             }
+            val performanceExport = exportPerformanceWindows(preparedLog.content)
+            val logText = preparedLog.content.orEmpty()
+            val session = extractSessionInfo(logText)
+            val snapshot = extractSessionConfiguration(logText, session.getValue("titleId"))
+            val loaderMode = extractAndroidLoaderMode(logText)
+            val packsHash = sha256Text(logText.lineSequence().filter { it.contains("Activate graphic pack:") }
+                .map { it.substringAfter("Activate graphic pack:").trim() }.sorted().joinToString("\n"))
+            val sessionSettings = snapshot?.settings?.copy(activeGraphicPacksSha256 = packsHash)
+                ?: DiagnosticSettingsInfo(null, null, null, null, null, "unavailable", "unavailable", packsHash)
+            val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val batteryStatus = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val powerManager = context.getSystemService(PowerManager::class.java)
 
             val report = DiagnosticReport(
                 generatedAtUtc = Instant.now().toString(),
-                app = DiagnosticAppInfo(
+                app = snapshot?.app ?: DiagnosticAppInfo(
                     applicationId = BuildConfig.APPLICATION_ID,
                     versionName = BuildConfig.VERSION_NAME,
                     versionCode = BuildConfig.VERSION_CODE,
                     buildType = BuildConfig.BUILD_TYPE,
+                    commit = BuildConfig.VERSION_NAME.substringBefore('-'),
                 ),
                 device = DiagnosticDeviceInfo(
                     manufacturer = Build.MANUFACTURER,
@@ -64,30 +74,33 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                     displayWidthPixels = displayMode.physicalWidth,
                     displayHeightPixels = displayMode.physicalHeight,
                     displayRefreshRateHz = displayMode.refreshRate,
+                    charging = when (batteryStatus) {
+                        BatteryManager.BATTERY_STATUS_CHARGING -> "charging"
+                        BatteryManager.BATTERY_STATUS_FULL -> "full"
+                        BatteryManager.BATTERY_STATUS_DISCHARGING -> "discharging"
+                        BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "not-charging"
+                        else -> "unavailable"
+                    },
+                    thermalStatus = runCatching { powerManager.currentThermalStatus.toString() }
+                        .getOrDefault("unavailable"),
+                    batteryTemperatureCelsius = battery?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
+                        ?.takeUnless { it == Int.MIN_VALUE }?.let { (it / 10.0).toString() }
+                        ?: "unavailable",
                 ),
                 graphics = DiagnosticGraphicsInfo(
-                    driverMode = when {
-                        selectedDriverPath == null -> "system"
-                        selectedDriver == null -> "custom-metadata-unavailable"
-                        else -> "custom"
-                    },
-                    customDriver = selectedDriver?.metadata?.let { metadata ->
-                        DiagnosticDriverInfo(
-                            name = metadata.name,
-                            packageVersion = metadata.packageVersion,
-                            vendor = metadata.vendor,
-                            driverVersion = metadata.driverVersion,
-                            minApi = metadata.minApi,
-                        )
-                    },
+                    driverMode = loaderMode,
+                    customDriver = snapshot?.requestedCustomDriver?.takeIf { loaderMode == "custom" },
+                    identitySource = if (snapshot != null) "session-start" else "runtime-log-only",
+                    requestedDriverMode = snapshot?.requestedDriverMode ?: "unavailable",
+                    requestedCustomDriver = snapshot?.requestedCustomDriver,
+                    vulkanReported = extractVulkanReportedInfo(logText),
+                    presentation = extractPresentationInfo(logText),
+                    gpuTimestamps = logText.lineSequence()
+                        .lastOrNull { it.contains("Vulkan: GPU timestamps") }
+                        ?.let { parseKeyValues(it.substringAfter("Vulkan: GPU timestamps")) }
+                        ?: mapOf("status" to "unavailable: no timestamp capability in selected log"),
                 ),
-                settings = DiagnosticSettingsInfo(
-                    asyncShaderCompile = NativeSettings.getAsyncShaderCompile(),
-                    vsyncMode = NativeSettings.getVsyncMode(),
-                    accurateBarriers = NativeSettings.getAccurateBarriers(),
-                    upscalingFilter = NativeSettings.getUpscalingFilter(),
-                    downscalingFilter = NativeSettings.getDownscalingFilter(),
-                ),
+                settings = sessionSettings,
                 log = DiagnosticLogInfo(
                     included = preparedLog.content != null,
                     source = selectedLog?.source,
@@ -96,6 +109,8 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                     truncated = preparedLog.truncated,
                     redacted = true,
                 ),
+                session = session + mapOf("configurationCapturedAtUtc" to (snapshot?.capturedAtUtc ?: "unavailable")),
+                performance = performanceExport.summary,
             )
 
             val diagnosticDirectory = context.internalFolder().resolve(DIAGNOSTIC_DIRECTORY)
@@ -106,7 +121,10 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
             )
             val reportJson = DIAGNOSTIC_JSON.encodeToString(report)
 
-            writeDiagnosticBundle(destination, reportJson, preparedLog)
+            val additionalEntries = buildMap {
+                performanceExport.jsonLines?.let { put(PERFORMANCE_WINDOW_FILE_NAME, it) }
+            }
+            writeDiagnosticBundle(destination, reportJson, preparedLog, additionalEntries)
             deleteOldBundles(diagnosticDirectory, keep = MAX_RETAINED_BUNDLES)
             destination
         }
@@ -180,3 +198,60 @@ private val DIAGNOSTIC_JSON = Json {
     prettyPrint = true
     encodeDefaults = true
 }
+
+internal fun extractVulkanReportedInfo(log: String): Map<String, String> {
+    val result = linkedMapOf<String, String>()
+    log.lineSequence().forEach { line ->
+        when {
+            line.contains("Using GPU:") -> result["deviceName"] = line.substringAfter("Using GPU:").trim()
+            line.contains("Driver version:") -> result["driverInfo"] = line.substringAfter("Driver version:").trim()
+            line.contains("Vulkan instance version:") -> result["instanceApiVersion"] = line.substringAfter("Vulkan instance version:").trim()
+            line.contains("Vulkan: Device properties") -> parseKeyValues(line.substringAfter("Vulkan: Device properties")).forEach(result::put)
+        }
+    }
+    if (result.isEmpty()) result["status"] = "unavailable: no Vulkan session in selected log"
+    return result
+}
+
+internal fun extractPresentationInfo(log: String): Map<String, String> {
+    val result = linkedMapOf<String, String>()
+    log.lineSequence().forEach { line ->
+        if (line.contains("Vulkan: Present mode")) parseKeyValues(line.substringAfter("Vulkan: Present mode")).forEach(result::put)
+        if (line.contains("Vulkan: Swapchain created")) parseKeyValues(line.substringAfter("Vulkan: Swapchain created")).forEach(result::put)
+    }
+    if (result.isEmpty()) result["status"] = "unavailable: no swapchain in selected log"
+    return result
+}
+
+internal fun extractSessionInfo(log: String): Map<String, String> {
+    val result = linkedMapOf(
+        "titleId" to "unavailable",
+        "titleName" to "unavailable",
+        "region" to "unavailable",
+        "internalResolution" to "unavailable",
+        "outputResolution" to "unavailable",
+        "sceneMarker" to "unavailable",
+        "resolutionGraphicPackPreset" to "unavailable",
+    )
+    log.lineSequence().forEach { line ->
+        when {
+            line.contains("TitleId:") -> result["titleId"] = line.substringAfter("TitleId:").trim().replace("-", "")
+            line.contains("Title name:") -> result["titleName"] = line.substringAfter("Title name:").trim()
+            line.contains("TitleRegion:") -> result["region"] = line.substringAfter("TitleRegion:").trim()
+            line.contains("Vulkan: Swapchain created") -> result["outputResolution"] =
+                Regex("extent=(\\d+x\\d+)").find(line)?.groupValues?.get(1) ?: result.getValue("outputResolution")
+            line.contains("Activate graphic pack:") && line.contains("/Graphics/Resolution [Presets:") ->
+                result["resolutionGraphicPackPreset"] = line.substringAfter("[Presets:").substringBeforeLast("]").trim()
+            line.contains("Cemu diagnostic scene:") -> result["sceneMarker"] = line.substringAfter("Cemu diagnostic scene:").trim()
+        }
+    }
+    return result
+}
+
+private fun parseKeyValues(text: String): Map<String, String> =
+    Regex("(\\w+)=(\\[[^]]*]|[^ ]+)").findAll(text).associate { it.groupValues[1] to it.groupValues[2] }
+
+internal fun extractAndroidLoaderMode(log: String): String = log.lineSequence()
+    .lastOrNull { it.contains("Vulkan: Android loader mode=") }
+    ?.substringAfter("Vulkan: Android loader mode=")?.trim()
+    ?.takeIf { it == "custom" || it == "system" } ?: "unavailable"

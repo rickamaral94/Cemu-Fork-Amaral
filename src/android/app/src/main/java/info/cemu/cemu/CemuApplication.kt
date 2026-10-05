@@ -4,6 +4,8 @@ import android.app.Application
 import info.cemu.cemu.common.android.context.internalFolder
 import info.cemu.cemu.common.diagnostics.archivePreviousSessionLogs
 import info.cemu.cemu.common.diagnostics.compactArchivedSessionLogs
+import info.cemu.cemu.common.diagnostics.logSessionConfiguration
+import info.cemu.cemu.nativeinterface.NativeEmulation
 import info.cemu.cemu.common.settings.AppSettingsStore
 import info.cemu.cemu.common.ui.localization.setLanguage
 import info.cemu.cemu.common.ui.localization.setTranslations
@@ -138,6 +140,7 @@ class CemuApplication : Application() {
     }
 
     private fun initializeCemu() {
+        NativeEmulation.sessionConfigurationLogger = ::logSessionConfiguration
         val displayMetrics = resources.displayMetrics
         setDPI(displayMetrics.density)
         initializeActiveSettings(

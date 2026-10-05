@@ -78,4 +78,20 @@ class DiagnosticBundleTest {
             assertTrue(zip.getEntry("log.txt") == null)
         }
     }
+
+    @Test
+    fun addsVersionedPerformanceWindowsWithoutChangingExistingEntries() {
+        val bundle = temporaryFolder.root.resolve("diagnostics-with-windows.zip")
+        writeDiagnosticBundle(
+            bundle,
+            "{}",
+            prepareDiagnosticLog(temporaryFolder.root.resolve("missing.txt")),
+            mapOf(PERFORMANCE_WINDOW_FILE_NAME to "{\"schemaVersion\":1}\n"),
+        )
+
+        ZipFile(bundle).use { zip ->
+            assertTrue(zip.getEntry("report.json") != null)
+            assertTrue(zip.getEntry(PERFORMANCE_WINDOW_FILE_NAME) != null)
+        }
+    }
 }

@@ -21,6 +21,7 @@
 
 // forward declaration from main.cpp
 void CemuCommonInit();
+std::optional<std::string> get_custom_driver_path();
 
 namespace NativeEmulation
 {
@@ -280,6 +281,32 @@ extern "C" [[maybe_unused]] JNIEXPORT void JNICALL
 Java_info_cemu_cemu_nativeinterface_NativeEmulation_initializeRenderer(JNIEnv* env, [[maybe_unused]] jclass clazz)
 {
 	static std::unique_ptr<NativeEmulation::TestSurface> testSurface;
+
+	// Bind diagnostics to the effective title profile, before loading Vulkan.
+	const uint64 titleId = CafeSystem::GetForegroundTitleId();
+	const auto driverPath = get_custom_driver_path();
+	auto profilePath = ActiveSettings::GetConfigPath("gameProfiles/{:016x}.ini", titleId);
+	std::error_code profileError;
+	if (!fs::exists(profilePath, profileError))
+		profilePath = ActiveSettings::GetDataPath("gameProfiles/default/{:016x}.ini", titleId);
+	jmethodID capture = env->GetStaticMethodID(clazz, "captureSessionConfiguration",
+		"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+	if (capture && !env->ExceptionCheck())
+	{
+		jstring driver = driverPath && !driverPath->empty() ? JNIUtils::ToJString(env, *driverPath) : nullptr;
+		jstring title = JNIUtils::ToJString(env, fmt::format("{:016x}", titleId));
+		jstring profile = JNIUtils::ToJString(env, _pathToUtf8(profilePath));
+		env->CallStaticVoidMethod(clazz, capture, driver, title, profile);
+		if (driver)
+			env->DeleteLocalRef(driver);
+		env->DeleteLocalRef(title);
+		env->DeleteLocalRef(profile);
+	}
+	if (env->ExceptionCheck())
+	{
+		env->ExceptionClear();
+		cemuLog_log(LogType::Force, "Cemu session configuration unavailable: JNI-capture-failed");
+	}
 
 	InitializeGlobalVulkan();
 	JNIUtils::HandleNativeException(env, [&]() {

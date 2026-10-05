@@ -28,6 +28,137 @@ typedef uint32be* LatteCMDPtr;
 #define LatteReadCMD() ((uint32)*(cmd++))
 #define LatteSkipCMD(_nWords) cmd += (_nWords)
 
+namespace
+{
+enum CommandPacketCategory : size_t
+{
+	CP_CATEGORY_PRIMARY = 0,
+	CP_CATEGORY_SECONDARY,
+	CP_CATEGORY_TERTIARY,
+	CP_CATEGORY_DRAW,
+	CP_CATEGORY_OTHER,
+};
+
+enum GenericRegisterCategory : size_t
+{
+	CP_REGISTER_CONTEXT = 0,
+	CP_REGISTER_RESOURCE,
+	CP_REGISTER_ALU_CONST,
+	CP_REGISTER_SAMPLER,
+	CP_REGISTER_CONFIG,
+	CP_REGISTER_CTL_LOOP,
+	CP_REGISTER_CATEGORY_COUNT,
+};
+
+void RecordCommandPacket(std::array<uint32, 5>& packets, std::array<uint32, 5>& words, CommandPacketCategory category, uint32 nWords);
+
+void RecordGenericRegisterPacket(GenericRegisterCategory category, uint32 nWords, bool isLoad)
+{
+	auto& commandProcessor = performanceMonitor.commandProcessor;
+	commandProcessor.genericPackets[CP_CATEGORY_PRIMARY]++;
+	commandProcessor.genericWords[CP_CATEGORY_PRIMARY] += nWords;
+	commandProcessor.genericRegisterPackets[category]++;
+	commandProcessor.genericRegisterWords[category] += nWords;
+	commandProcessor.genericRegisterLoadPackets[category] += isLoad ? 1 : 0;
+	const uint32 payloadWords = nWords > 0 ? nWords - 1 : 0;
+	const size_t widthBucket = payloadWords <= 1 ? 0 : payloadWords <= 4 ? 1 : payloadWords <= 8 ? 2 : 3;
+	commandProcessor.genericRegisterWidthPackets[category][widthBucket]++;
+}
+
+CommandPacketCategory ClassifyContinuousPacket(uint32 itCode)
+{
+	switch (itCode)
+	{
+	case IT_SET_RESOURCE:
+		return CP_CATEGORY_PRIMARY;
+	case IT_SET_ALU_CONST:
+		return CP_CATEGORY_SECONDARY;
+	case IT_SET_CONTEXT_REG:
+		return CP_CATEGORY_TERTIARY;
+	case IT_DRAW_INDEX_2:
+		return CP_CATEGORY_DRAW;
+	default:
+		return CP_CATEGORY_OTHER;
+	}
+}
+
+CommandPacketCategory RecordGenericCommandPacket(uint32 itCode, uint32 nWords)
+{
+	switch (itCode)
+	{
+	case IT_SET_CONTEXT_REG:
+	case IT_SET_ALL_CONTEXTS:
+		RecordGenericRegisterPacket(CP_REGISTER_CONTEXT, nWords, false);
+		return CP_CATEGORY_PRIMARY;
+	case IT_LOAD_CONTEXT_REG:
+		RecordGenericRegisterPacket(CP_REGISTER_CONTEXT, nWords, true);
+		return CP_CATEGORY_PRIMARY;
+	case IT_SET_RESOURCE:
+		RecordGenericRegisterPacket(CP_REGISTER_RESOURCE, nWords, false);
+		return CP_CATEGORY_PRIMARY;
+	case IT_LOAD_RESOURCE:
+		RecordGenericRegisterPacket(CP_REGISTER_RESOURCE, nWords, true);
+		return CP_CATEGORY_PRIMARY;
+	case IT_SET_ALU_CONST:
+		RecordGenericRegisterPacket(CP_REGISTER_ALU_CONST, nWords, false);
+		return CP_CATEGORY_PRIMARY;
+	case IT_LOAD_ALU_CONST:
+		RecordGenericRegisterPacket(CP_REGISTER_ALU_CONST, nWords, true);
+		return CP_CATEGORY_PRIMARY;
+	case IT_SET_CTL_CONST:
+	case IT_SET_LOOP_CONST:
+		RecordGenericRegisterPacket(CP_REGISTER_CTL_LOOP, nWords, false);
+		return CP_CATEGORY_PRIMARY;
+	case IT_LOAD_LOOP_CONST:
+		RecordGenericRegisterPacket(CP_REGISTER_CTL_LOOP, nWords, true);
+		return CP_CATEGORY_PRIMARY;
+	case IT_SET_SAMPLER:
+		RecordGenericRegisterPacket(CP_REGISTER_SAMPLER, nWords, false);
+		return CP_CATEGORY_PRIMARY;
+	case IT_LOAD_SAMPLER:
+		RecordGenericRegisterPacket(CP_REGISTER_SAMPLER, nWords, true);
+		return CP_CATEGORY_PRIMARY;
+	case IT_SET_CONFIG_REG:
+		RecordGenericRegisterPacket(CP_REGISTER_CONFIG, nWords, false);
+		return CP_CATEGORY_PRIMARY;
+	case IT_LOAD_CONFIG_REG:
+		RecordGenericRegisterPacket(CP_REGISTER_CONFIG, nWords, true);
+		return CP_CATEGORY_PRIMARY;
+	case IT_WAIT_REG_MEM:
+	case IT_MEM_SEMAPHORE:
+	case IT_SURFACE_SYNC:
+	case IT_HLE_TRIGGER_SCANBUFFER_SWAP:
+	case IT_HLE_WAIT_FOR_FLIP:
+	case IT_HLE_SYNC_ASYNC_OPERATIONS:
+		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
+			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_SECONDARY, nWords);
+		return CP_CATEGORY_SECONDARY;
+	case IT_HLE_COPY_COLORBUFFER_TO_SCANBUFFER:
+	case IT_HLE_CLEAR_COLOR_DEPTH_STENCIL:
+	case IT_HLE_COPY_SURFACE_NEW:
+		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
+			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_TERTIARY, nWords);
+		return CP_CATEGORY_TERTIARY;
+	case IT_DRAW_INDEX_2:
+	case IT_DRAW_INDEX_AUTO:
+	case IT_DRAW_INDEX_IMMD:
+		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
+			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_DRAW, nWords);
+		return CP_CATEGORY_DRAW;
+	default:
+		RecordCommandPacket(performanceMonitor.commandProcessor.genericPackets,
+			performanceMonitor.commandProcessor.genericWords, CP_CATEGORY_OTHER, nWords);
+		return CP_CATEGORY_OTHER;
+	}
+}
+
+void RecordCommandPacket(std::array<uint32, 5>& packets, std::array<uint32, 5>& words, CommandPacketCategory category, uint32 nWords)
+{
+	packets[category]++;
+	words[category] += nWords;
+}
+}
+
 void LatteThread_HandleOSScreen();
 
 void LatteThread_Exit();
@@ -184,7 +315,10 @@ uint32 LatteCP_readU32Deprc()
 		LatteThread_HandleOSScreen(); // check if new frame was presented via OSScreen API
 
 		if ( TCL::TCLGPUReadRBWord(cmdWord) )
+		{
+			performanceMonitor.gpuTime_idleTime.endMeasuring();
 			return cmdWord;
+		}
 		if (Latte_GetStopSignal())
 			LatteThread_Exit();
 
@@ -372,8 +506,8 @@ LatteCMDPtr LatteCP_itSetRegistersGeneric(LatteCMDPtr cmd, uint32 nWords)
 }
 
 // similar to LatteCP_itSetRegistersGeneric, but calls a callback for every register range checked and returns true ONLY if any register value has actually changed (e.g. not updated to the same value as before)
-template<uint32 TRegisterBase, typename TRegRangeCallback>
-bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCallback cbRegRange)
+template<uint32 TRegisterBase, typename TRegRangeCallback, typename TRegChangeCallback>
+bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCallback cbRegRange, TRegChangeCallback cbRegChange)
 {
 	nWords--;
 	const uint32 registerOffset = LatteReadCMD();
@@ -395,7 +529,11 @@ bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCal
 			MPTR regShadowAddr = shadowAddrs[indexCounter];
 			if (regShadowAddr)
 				*(uint32*)(memory_base + regShadowAddr) = _swapEndianU32(dataWord);
-			hasRegChange |= (outputReg[indexCounter] != dataWord);
+			if (outputReg[indexCounter] != dataWord)
+			{
+				hasRegChange = true;
+				cbRegChange(registerIndex + indexCounter);
+			}
 			outputReg[indexCounter] = dataWord;
 			indexCounter++;
 		}
@@ -406,7 +544,11 @@ bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCal
 		if (nWords == 1) // common case
 		{
 			uint32 v = LatteReadCMD();
-			hasRegChange |= (*outputReg != v);
+			if (*outputReg != v)
+			{
+				hasRegChange = true;
+				cbRegChange(registerIndex);
+			}
 			*outputReg = v;
 		}
 		else
@@ -415,7 +557,11 @@ bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCal
 			while (i < nWords)
 			{
 				uint32 v = cmd[i];
-				hasRegChange |= (outputReg[i] != v);
+				if (outputReg[i] != v)
+				{
+					hasRegChange = true;
+					cbRegChange(registerIndex + i);
+				}
 				outputReg[i] = v;
 				i++;
 			}
@@ -427,6 +573,12 @@ bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCal
 	// callback
 	cbRegRange(registerStartIndex, registerEndIndex, hasRegChange);
 	return hasRegChange;
+}
+
+template<uint32 TRegisterBase, typename TRegRangeCallback>
+bool LatteCP_itSetRegistersGeneric2(LatteCMDPtr cmd, uint32 nWords, TRegRangeCallback cbRegRange)
+{
+	return LatteCP_itSetRegistersGeneric2<TRegisterBase>(cmd, nWords, cbRegRange, [](uint32) {});
 }
 
 LatteCMDPtr LatteCP_itIndexType(LatteCMDPtr cmd, uint32 nWords)
@@ -1016,10 +1168,12 @@ void LatteCP_dumpCommandBufferError(LatteCMDPtr cmdStart, LatteCMDPtr cmdEnd, La
 // we implement this optimization by having a specialized version of LatteCP_processCommandBuffer, called right after drawcalls, which only implements commands that dont interfere with fast drawing. Other commands will cause this function to return to the complex and generic parser
 void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCtx)
 {
+	LattePerfStatTimerScope timerScope(performanceMonitor.gpuTime_continuousDrawPass);
 	cemu_assert_debug(drawPassCtx.isWithinDrawPass());
 	// quit early if there are parameters set which are generally incompatible with fast drawing
 	if (LatteGPUState.contextRegister[mmVGT_STRMOUT_EN] != 0)
 	{
+		performanceMonitor.vk.numFastDrawPassEndsStreamoutPerFrame.increment();
 		drawPassCtx.endDrawPass();
 		return;
 	}
@@ -1030,6 +1184,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 		LatteCMDPtr cmd, cmdStart, cmdEnd;
 		if (!drawPassCtx.PopCurrentCommandQueuePos(cmd, cmdStart, cmdEnd))
 		{
+			performanceMonitor.vk.numFastDrawPassEndsQueueEmptyPerFrame.increment();
 			drawPassCtx.endDrawPass();
 			return;
 		}
@@ -1043,6 +1198,8 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 			{
 				uint32 itCode = (itHeader >> 8) & 0xFF;
 				uint32 nWords = ((itHeader >> 16) & 0x3FFF) + 1;
+				RecordCommandPacket(performanceMonitor.commandProcessor.continuousPackets,
+					performanceMonitor.commandProcessor.continuousWords, ClassifyContinuousPacket(itCode), nWords);
 				LatteCMDPtr cmdData = cmd;
 				cmd += nWords;
 				switch (itCode)
@@ -1057,6 +1214,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 								(registerStart >= Latte::REGADDR::SQ_TEX_RESOURCE_WORD0_N_VS && registerStart < (Latte::REGADDR::SQ_TEX_RESOURCE_WORD0_N_VS + Latte::GPU_LIMITS::NUM_TEXTURES_PER_STAGE * 7)) ||
 								(registerStart >= Latte::REGADDR::SQ_TEX_RESOURCE_WORD0_N_GS && registerStart < (Latte::REGADDR::SQ_TEX_RESOURCE_WORD0_N_GS + Latte::GPU_LIMITS::NUM_TEXTURES_PER_STAGE * 7)))
 							{
+								performanceMonitor.vk.numFastDrawPassEndsTextureChangePerFrame.increment();
 								drawPassCtx.endDrawPass(); // texture updates end the current draw sequence
 							}
 							else if (registerStart >= mmSQ_VTX_ATTRIBUTE_BLOCK_START && registerEnd <= mmSQ_VTX_ATTRIBUTE_BLOCK_END)
@@ -1127,9 +1285,31 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 				}
 				case IT_SET_CONTEXT_REG:
 				{
-					bool hasChanged = LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_CONTEXT>(cmdData, nWords, [](uint32 registerStart, uint32 registerEnd, bool regValuesChanged){});
+					bool hasChanged = LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_CONTEXT>(cmdData, nWords, [](uint32 registerStart, uint32 registerEnd, bool regValuesChanged)
+						{
+							if (!regValuesChanged)
+								return;
+							const uint32 contextOffset = registerStart - LATTE_REG_BASE_CONTEXT;
+							const uint32 bucketIndex = std::min<uint32>(contextOffset >> 8, 15);
+							performanceMonitor.vk.numFastDrawPassEndsContextBucketPerFrame[bucketIndex].increment();
+							if (bucketIndex == 2)
+							{
+								const uint32 a2BucketIndex = (contextOffset >> 4) & 0xF;
+								performanceMonitor.vk.numFastDrawPassEndsContextA2BucketPerFrame[a2BucketIndex].increment();
+								const uint32 registerIndex = contextOffset & 0xF;
+								if (a2BucketIndex == 1)
+									performanceMonitor.vk.numFastDrawPassEndsContextA21RegisterPerFrame[registerIndex].increment();
+								else if (a2BucketIndex == 2)
+									performanceMonitor.vk.numFastDrawPassEndsContextA22RegisterPerFrame[registerIndex].increment();
+							}
+						}, [](uint32 changedRegister)
+						{
+							if (changedRegister >= 0xA210 && changedRegister <= 0xA22F)
+								performanceMonitor.vk.numFastDrawContextRegisterChangesPerFrame[changedRegister - 0xA210].increment();
+						});
 					if (hasChanged)
 					{
+						performanceMonitor.vk.numFastDrawPassEndsContextChangePerFrame.increment();
 						drawPassCtx.endDrawPass();
 						drawPassCtx.PushCurrentCommandQueuePos(cmd, cmdStart, cmdEnd);
 						return;
@@ -1149,6 +1329,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 					bool hasChanged = LatteCP_itSetRegistersGeneric2<LATTE_REG_BASE_SAMPLER>(cmdData, nWords, [](uint32 registerStart, uint32 registerEnd, bool regValuesChanged){});
 					if (hasChanged)
 					{
+						performanceMonitor.vk.numFastDrawPassEndsSamplerChangePerFrame.increment();
 						drawPassCtx.endDrawPass();
 						drawPassCtx.PushCurrentCommandQueuePos(cmd, cmdStart, cmdEnd);
 						return;
@@ -1157,6 +1338,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 				}
 				default:
 					// unallowed command for fast draw
+					performanceMonitor.vk.numFastDrawPassEndsUnsupportedType3PerFrame.increment();
 					drawPassCtx.endDrawPass();
 					drawPassCtx.PushCurrentCommandQueuePos(cmdBeforeCommand, cmdStart, cmdEnd);
 					return;
@@ -1169,6 +1351,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 			else
 			{
 				// unallowed command for fast draw
+				performanceMonitor.vk.numFastDrawPassEndsUnsupportedPacketPerFrame.increment();
 				drawPassCtx.endDrawPass();
 				drawPassCtx.PushCurrentCommandQueuePos(cmdBeforeCommand, cmdStart, cmdEnd);
 				return;
@@ -1181,6 +1364,7 @@ void LatteCP_processCommandBuffer_continuousDrawPass(DrawPassContext& drawPassCt
 
 void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 {
+	LattePerfStatTimerScope timerScope(performanceMonitor.gpuTime_commandBuffer);
 	while (true)
 	{
 		LatteCMDPtr cmd, cmdStart, cmdEnd;
@@ -1195,6 +1379,7 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 			{
 				uint32 itCode = (itHeader >> 8) & 0xFF;
 				uint32 nWords = ((itHeader >> 16) & 0x3FFF) + 1;
+				RecordGenericCommandPacket(itCode, nWords);
 				LatteCMDPtr cmdData = cmd;
 				cmd += nWords;
 				switch (itCode)
@@ -1356,6 +1541,8 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 				}
 				case IT_HLE_COPY_COLORBUFFER_TO_SCANBUFFER:
 				{
+					LattePerfStatTimerScope transferTimer(performanceMonitor.commandProcessor.genericTransferTime[0]);
+					performanceMonitor.commandProcessor.genericTransferPackets[0]++;
 					LatteCP_itHLECopyColorBufferToScanBuffer(cmdData, nWords);
 					break;
 				}
@@ -1378,11 +1565,15 @@ void LatteCP_processCommandBuffer(DrawPassContext& drawPassCtx)
 				}
 				case IT_HLE_CLEAR_COLOR_DEPTH_STENCIL:
 				{
+					LattePerfStatTimerScope transferTimer(performanceMonitor.commandProcessor.genericTransferTime[1]);
+					performanceMonitor.commandProcessor.genericTransferPackets[1]++;
 					LatteCP_itHLEClearColorDepthStencil(cmdData, nWords);
 					break;
 				}
 				case IT_HLE_COPY_SURFACE_NEW:
 				{
+					LattePerfStatTimerScope transferTimer(performanceMonitor.commandProcessor.genericTransferTime[2]);
+					performanceMonitor.commandProcessor.genericTransferPackets[2]++;
 					LatteCP_itHLECopySurfaceNew(cmdData, nWords);
 					break;
 				}

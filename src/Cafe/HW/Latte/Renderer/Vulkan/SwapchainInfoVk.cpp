@@ -3,6 +3,7 @@
 #include "config/CemuConfig.h"
 #include "WindowSystem.h"
 #include "Cafe/HW/Latte/Core/Latte.h"
+#include "Cafe/HW/Latte/Core/LattePerformanceMonitor.h"
 #include "Cafe/HW/Latte/Core/LatteTiming.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanAPI.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
@@ -82,6 +83,7 @@ void SwapchainInfoVk::RecreateSurface()
 
 void SwapchainInfoVk::Create()
 {
+	performanceMonitor.vk.numSwapchainRecreatesPerFrame.increment();
 #if BOOST_PLAT_ANDROID
 	if (surfaceWasLost)
 		RecreateSurface();
@@ -115,6 +117,11 @@ void SwapchainInfoVk::Create()
 	result = vkGetSwapchainImagesKHR(m_logicalDevice, m_swapchain, &image_count, m_swapchainImages.data());
 	if (result != VK_SUCCESS)
 		UnrecoverableError("Error attempting to retrieve swapchain images");
+	cemuLog_log(LogType::Force,
+		"Vulkan: Swapchain created extent={}x{} format={} colorSpace={} images={} requestedImages={} usage=0x{:x}",
+		m_actualExtent.width, m_actualExtent.height, static_cast<uint32>(m_surfaceFormat.format),
+		static_cast<uint32>(m_surfaceFormat.colorSpace), image_count, create_info.minImageCount,
+		static_cast<uint32>(create_info.imageUsage));
 	// create default renderpass
 	VkAttachmentDescription colorAttachment = {};
 	colorAttachment.format = m_surfaceFormat.format;
@@ -266,7 +273,13 @@ bool SwapchainInfoVk::IsValid() const
 void SwapchainInfoVk::WaitAvailableFence()
 {
 	if(m_awaitableFence != VK_NULL_HANDLE)
+	{
+		performanceMonitor.vk.swapchainFenceWaitTime.beginMeasuring();
+		performanceMonitor.vk.commandBufferFenceWaitTime.beginMeasuring();
 		vkWaitForFences(m_logicalDevice, 1, &m_awaitableFence, VK_TRUE, UINT64_MAX);
+		performanceMonitor.vk.commandBufferFenceWaitTime.endMeasuring();
+		performanceMonitor.vk.swapchainFenceWaitTime.endMeasuring();
+	}
 	m_awaitableFence = VK_NULL_HANDLE;
 }
 
@@ -287,7 +300,10 @@ bool SwapchainInfoVk::AcquireImage()
 	ResetAvailableFence();
 
 	VkSemaphore acquireSemaphore = m_acquireSemaphores[m_acquireIndex];
+	performanceMonitor.vk.acquireImageTime.beginMeasuring();
 	VkResult result = vkAcquireNextImageKHR(m_logicalDevice, m_swapchain, 1'000'000'000, acquireSemaphore, m_imageAvailableFence, &swapchainImageIndex);
+	performanceMonitor.vk.acquireImageTime.endMeasuring();
+	performanceMonitor.vk.numAcquireCallsPerFrame.increment();
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 		m_shouldRecreate = true;
 
@@ -307,6 +323,7 @@ bool SwapchainInfoVk::AcquireImage()
 
 	if (result < 0)
 	{
+		cemuLog_log(LogType::Force, "Vulkan error event: call=vkAcquireNextImageKHR result={} deviceLost={}", static_cast<sint32>(result), result == VK_ERROR_DEVICE_LOST);
 		swapchainImageIndex = -1;
 		if (result == VK_ERROR_OUT_OF_DATE_KHR)
 			return false;

@@ -12,6 +12,7 @@
 #include "util/helpers/Semaphore.h"
 #include "util/containers/flat_hash_map.hpp"
 #include "util/containers/robin_hood.h"
+#include "Cafe/HW/Latte/Renderer/Vulkan/GpuTimestampTracker.h"
 
 struct VkSupportedFormatInfo_t
 {
@@ -241,7 +242,7 @@ public:
 
 	VkDescriptorPool GetDescriptorPool() const { return m_descriptorPool; }
 
-	void WaitDeviceIdle() const { vkDeviceWaitIdle(m_logicalDevice); }
+	void WaitDeviceIdle() const;
 
 	void Initialize() override;
 	void Shutdown() override;
@@ -348,6 +349,7 @@ public:
 	void bufferCache_copy(uint32 srcOffset, uint32 dstOffset, uint32 size) override;
 
 	void buffer_bindVertexBuffers(std::span<BindBufferParam> bindings) override;
+	bool buffer_tryBindSmallVertexBuffer(uint8 bufferIndex, uint16 stride, const uint8* data, uint32 size) override;
 	void buffer_bindVertexStrideWorkaroundBuffer(VkBuffer fixedBuffer, uint32 offset, uint32 bufferIndex, uint32 size);
 	std::pair<VkBuffer, uint32> buffer_genStrideWorkaroundVertexBuffer(MPTR buffer, uint32 size, uint32 oldStride);
 	void buffer_bindUniformBuffer(LatteConst::ShaderType shaderType, uint32 bufferIndex, uint32 offset, uint32 size) override;
@@ -383,6 +385,7 @@ private:
 
 		// renderpass
 		CachedFBOVk* activeRenderpassFBO{}; // the FBO of the currently active Vulkan renderpass
+		CachedFBOVk* lastRenderpassFBO{}; // telemetry only; never dereferenced
 
 		// drawcall state
 		PipelineInfo* activePipelineInfo{ nullptr };
@@ -552,8 +555,21 @@ private:
 	void draw_updateVkBlendConstants();
 	void draw_updateDepthBias(bool forceUpdate);
 
+	enum class RenderPassEndReason : uint32
+	{
+		Submit,
+		Presentation,
+		Clear,
+		TextureTransfer,
+		BufferTransfer,
+		Query,
+		Readback,
+		FboTransition,
+		Other,
+	};
+
 	void draw_setRenderPass();
-	void draw_endRenderPass();
+	void draw_endRenderPass(RenderPassEndReason reason);
 
 	void draw_beginSequence() override;
 	void draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 instanceCount, uint32 count, MPTR indexDataMPTR, Latte::LATTE_VGT_DMA_INDEX_TYPE::E_INDEX_TYPE indexType, const LatteDrawcallContext& drawcallContext) override;
@@ -677,6 +693,20 @@ private:
 	std::array<VkFence, kCommandBufferPoolSize> m_cmdBufferFences;
 	std::array<VkCommandBuffer, kCommandBufferPoolSize> m_commandBuffers;
 	std::array<VkSemaphore, kCommandBufferPoolSize> m_commandBufferSemaphores;
+
+	void InitGpuTimestamps();
+	void BeginGpuTimestamp();
+	void RetireGpuTimestamp(size_t commandBufferIndex);
+	VkQueryPool m_gpuTimestampPool{VK_NULL_HANDLE};
+	uint32 m_gpuTimestampValidBits{};
+	double m_gpuTimestampPeriodNs{};
+	struct GpuTimestampSlot
+	{
+		uint64 frameId{};
+		bool recorded{};
+	};
+	std::array<GpuTimestampSlot, kCommandBufferPoolSize> m_gpuTimestampSlots{};
+	GpuTimestampTracker m_gpuTimestampTracker;
 
 	VkSemaphore GetLastSubmittedCmdBufferSemaphore()
 	{

@@ -213,6 +213,19 @@ void VulkanRenderer::DetermineVendor()
 	}
 
 	VkDriverId driverId = driverProperties.driverID;
+	std::string pipelineCacheUuid;
+	for (const uint8 byte : properties.properties.pipelineCacheUUID)
+		pipelineCacheUuid += fmt::format("{:02x}", byte);
+	cemuLog_log(LogType::Force,
+		"Vulkan: Device properties deviceName={} vendorID=0x{:04x} deviceID=0x{:04x} driverID={} driverVersion={} apiVersion={}.{}.{} timestampPeriodNs={} pipelineCacheUUID={} driverName={} driverInfo={}",
+		properties.properties.deviceName, properties.properties.vendorID, properties.properties.deviceID,
+		m_featureControl.deviceExtensions.driver_properties ? static_cast<uint32>(driverId) : 0,
+		properties.properties.driverVersion,
+		VK_API_VERSION_MAJOR(properties.properties.apiVersion), VK_API_VERSION_MINOR(properties.properties.apiVersion),
+		VK_API_VERSION_PATCH(properties.properties.apiVersion), properties.properties.limits.timestampPeriod,
+		pipelineCacheUuid,
+		m_featureControl.deviceExtensions.driver_properties ? driverProperties.driverName : "unavailable",
+		m_featureControl.deviceExtensions.driver_properties ? driverProperties.driverInfo : "unavailable");
 
 	if(driverId == VK_DRIVER_ID_MESA_RADV || driverId == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA)
 		m_vendor = GfxVendor::Mesa;
@@ -795,6 +808,7 @@ VulkanRenderer::VulkanRenderer() : Renderer(RendererAPI::Vulkan)
 	QueryAvailableFormats();
 	CreateCommandPool();
 	CreateCommandBuffers();
+	InitGpuTimestamps();
 	CreateDescriptorPool();
 	swapchain_createDescriptorSetLayout();
 
@@ -885,6 +899,8 @@ VulkanRenderer::~VulkanRenderer()
 
 	if(m_occlusionQueries.queryPool != VK_NULL_HANDLE)
 		vkDestroyQueryPool(m_logicalDevice, m_occlusionQueries.queryPool, nullptr);
+	if (m_gpuTimestampPool != VK_NULL_HANDLE)
+		vkDestroyQueryPool(m_logicalDevice, m_gpuTimestampPool, nullptr);
 
 	vkDestroyDescriptorSetLayout(m_logicalDevice, m_swapchainDescriptorSetLayout, nullptr);
 
@@ -1343,6 +1359,7 @@ VkDeviceCreateInfo VulkanRenderer::CreateDeviceCreateInfo(const std::vector<VkDe
 	createInfo.pEnabledFeatures = &deviceFeatures;
 	createInfo.enabledExtensionCount = used_extensions.size();
 	createInfo.ppEnabledExtensionNames = used_extensions.data();
+	cemuLog_log(LogType::Force, "Vulkan: Enabled device extensions [{}]", fmt::join(used_extensions, ","));
 
 	createInfo.pNext = deviceExtensionStructs;
 
@@ -2078,7 +2095,7 @@ bool VulkanRenderer::ImguiBegin(bool mainWindow)
 	if (!AcquireNextSwapchainImage(mainWindow))
 		return false;
 
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Presentation);
 	m_state.currentPipeline = VK_NULL_HANDLE;
 
 	ImGui_ImplVulkan_CreateFontsTexture(m_state.currentCommandBuffer);
@@ -2156,6 +2173,80 @@ void VulkanRenderer::DrawEmptyFrame(bool mainWindow)
 	SwapBuffers(mainWindow, !mainWindow);
 }
 
+void VulkanRenderer::InitGpuTimestamps()
+{
+#if BOOST_PLAT_ANDROID
+	performanceMonitor.vk.gpuTimestampReason = "timestamp-unsupported";
+	const char* disabled = getenv("CEMU_GPU_TIMESTAMPS");
+	if (disabled && std::string_view(disabled) == "0")
+		performanceMonitor.vk.gpuTimestampReason = "timestamp-disabled-by-env";
+	else if (!vkCmdWriteTimestamp || !vkGetQueryPoolResults)
+		performanceMonitor.vk.gpuTimestampReason = "timestamp-entrypoints-unavailable";
+	else
+	{
+		VkPhysicalDeviceProperties properties{};
+		vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
+		uint32 familyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &familyCount, nullptr);
+		std::vector<VkQueueFamilyProperties> families(familyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &familyCount, families.data());
+		m_gpuTimestampValidBits = families.at(m_indices.graphicsFamily).timestampValidBits;
+		m_gpuTimestampPeriodNs = properties.limits.timestampPeriod;
+		if (GpuTimestampTracker::DurationMs(0, 1, m_gpuTimestampValidBits, m_gpuTimestampPeriodNs))
+		{
+			VkQueryPoolCreateInfo info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+			info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+			info.queryCount = kCommandBufferPoolSize * 2;
+			const VkResult result = vkCreateQueryPool(m_logicalDevice, &info, nullptr, &m_gpuTimestampPool);
+			performanceMonitor.vk.gpuTimestampReason = result == VK_SUCCESS ? "none" : "timestamp-pool-create-failed";
+			if (result != VK_SUCCESS)
+				m_gpuTimestampPool = VK_NULL_HANDLE;
+		}
+	}
+#else
+	performanceMonitor.vk.gpuTimestampReason = "timestamp-disabled-on-platform";
+#endif
+	cemuLog_log(LogType::Force,
+		"Vulkan: GPU timestamps enabled={} reason={} validBits={} timestampPeriodNs={} measurement=sum-submit-top-bottom defaultAndroid=true readback=after-existing-fence",
+		m_gpuTimestampPool != VK_NULL_HANDLE, performanceMonitor.vk.gpuTimestampReason, m_gpuTimestampValidBits, m_gpuTimestampPeriodNs);
+}
+
+void VulkanRenderer::BeginGpuTimestamp()
+{
+	if (m_gpuTimestampPool == VK_NULL_HANDLE)
+		return;
+	LattePerfStatTimerScope timing(performanceMonitor.vk.gpuTimingCpuTime);
+	const uint32 firstQuery = static_cast<uint32>(m_commandBufferIndex) * 2;
+	// The slot's previous fence has already retired and its results were read.
+	vkCmdResetQueryPool(m_state.currentCommandBuffer, m_gpuTimestampPool, firstQuery, 2);
+	vkCmdWriteTimestamp(m_state.currentCommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_gpuTimestampPool, firstQuery);
+	m_gpuTimestampSlots[m_commandBufferIndex].recorded = true;
+}
+
+void VulkanRenderer::RetireGpuTimestamp(size_t commandBufferIndex)
+{
+	auto& slot = m_gpuTimestampSlots[commandBufferIndex];
+	if (!slot.recorded)
+		return;
+	LattePerfStatTimerScope timing(performanceMonitor.vk.gpuTimingCpuTime);
+	struct QueryResult
+	{
+		uint64 timestamp;
+		uint64 available;
+	};
+	std::array<QueryResult, 2> values{};
+	const VkResult result = vkGetQueryPoolResults(m_logicalDevice, m_gpuTimestampPool,
+		static_cast<uint32>(commandBufferIndex) * 2, 2, sizeof(values), values.data(), sizeof(QueryResult),
+		VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+	std::optional<double> timeMs;
+	if (result == VK_SUCCESS && values[0].available && values[1].available)
+		timeMs = GpuTimestampTracker::DurationMs(values[0].timestamp, values[1].timestamp, m_gpuTimestampValidBits, m_gpuTimestampPeriodNs);
+	else
+		cemuLog_log(LogType::Force, "Vulkan: GPU timestamp sample unavailable result={} reason=timestamp-result-unavailable", static_cast<sint32>(result));
+	m_gpuTimestampTracker.Complete(slot.frameId, timeMs, LattePerformanceMonitor_gpuFrameComplete);
+	slot.recorded = false;
+}
+
 void VulkanRenderer::InitFirstCommandBuffer()
 {
 	cemu_assert_debug(m_state.currentCommandBuffer == nullptr);
@@ -2169,6 +2260,7 @@ void VulkanRenderer::InitFirstCommandBuffer()
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(m_state.currentCommandBuffer, &beginInfo);
+	BeginGpuTimestamp();
 
 	vkCmdSetViewport(m_state.currentCommandBuffer, 0, 1, &m_state.currentViewport);
 	vkCmdSetScissor(m_state.currentCommandBuffer, 0, 1, &m_state.currentScissorRect);
@@ -2184,6 +2276,7 @@ void VulkanRenderer::ProcessFinishedCommandBuffers()
 		VkResult fenceStatus = vkGetFenceStatus(m_logicalDevice, m_cmdBufferFences[m_commandBufferSyncIndex]);
 		if (fenceStatus == VK_SUCCESS)
 		{
+			RetireGpuTimestamp(m_commandBufferSyncIndex);
 			ProcessDestructionQueue();
 			m_uniformVarBufferReadIndex = m_cmdBufferUniformRingbufIndices[m_commandBufferSyncIndex];
 			m_commandBufferSyncIndex = (m_commandBufferSyncIndex + 1) % m_commandBuffers.size();
@@ -2205,11 +2298,21 @@ void VulkanRenderer::ProcessFinishedCommandBuffers()
 	}
 }
 
+void VulkanRenderer::WaitDeviceIdle() const
+{
+	LattePerfStatTimerScope timing(performanceMonitor.vk.deviceIdleWaitTime);
+	vkDeviceWaitIdle(m_logicalDevice);
+}
+
 void VulkanRenderer::WaitForNextFinishedCommandBuffer()
 {
 	cemu_assert_debug(m_commandBufferSyncIndex != m_commandBufferIndex);
 	// wait on least recently submitted command buffer
+	performanceMonitor.vk.submittedFenceWaitTime.beginMeasuring();
+	performanceMonitor.vk.commandBufferFenceWaitTime.beginMeasuring();
 	VkResult result = vkWaitForFences(m_logicalDevice, 1, &m_cmdBufferFences[m_commandBufferSyncIndex], true, UINT64_MAX);
+	performanceMonitor.vk.commandBufferFenceWaitTime.endMeasuring();
+	performanceMonitor.vk.submittedFenceWaitTime.endMeasuring();
 	if (result == VK_TIMEOUT)
 	{
 		cemuLog_log(LogType::Force, "vkWaitForFences: Returned VK_TIMEOUT on infinite fence");
@@ -2224,9 +2327,16 @@ void VulkanRenderer::WaitForNextFinishedCommandBuffer()
 
 void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphore waitSemaphore)
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Submit);
 
 	occlusionQuery_notifyEndCommandBuffer();
+	if (m_gpuTimestampPool != VK_NULL_HANDLE)
+	{
+		LattePerfStatTimerScope timing(performanceMonitor.vk.gpuTimingCpuTime);
+		vkCmdWriteTimestamp(m_state.currentCommandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			m_gpuTimestampPool, static_cast<uint32>(m_commandBufferIndex) * 2 + 1);
+		m_gpuTimestampSlots[m_commandBufferIndex].frameId = m_gpuTimestampTracker.Submit();
+	}
 
 	vkEndCommandBuffer(m_state.currentCommandBuffer);
 
@@ -2262,9 +2372,16 @@ void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphor
 	submitInfo.pWaitDstStageMask = semWaitStageMask;
 	submitInfo.pWaitSemaphores = waitSemArray;
 
+	performanceMonitor.vk.queueSubmitTime.beginMeasuring();
 	const VkResult result = vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_cmdBufferFences[m_commandBufferIndex]);
+	performanceMonitor.vk.queueSubmitTime.endMeasuring();
+	performanceMonitor.vk.numQueueSubmitsPerFrame.increment();
+	performanceMonitor.vk.numSubmittedCommandBuffersPerFrame.add(submitInfo.commandBufferCount);
 	if (result != VK_SUCCESS)
+	{
+		cemuLog_log(LogType::Force, "Vulkan error event: call=vkQueueSubmit result={} deviceLost={}", static_cast<sint32>(result), result == VK_ERROR_DEVICE_LOST);
 		UnrecoverableError(fmt::format("failed to submit command buffer. Error {}", result).c_str());
+	}
 	m_numSubmittedCmdBuffers++;
 
 	// check if any previously submitted command buffers have finished execution
@@ -2290,6 +2407,7 @@ void VulkanRenderer::SubmitCommandBuffer(VkSemaphore signalSemaphore, VkSemaphor
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(m_state.currentCommandBuffer, &beginInfo);
+	BeginGpuTimestamp();
 
 	// make sure some states are set for this command buffer
 	vkCmdSetViewport(m_state.currentCommandBuffer, 0, 1, &m_state.currentViewport);
@@ -3153,7 +3271,10 @@ void VulkanRenderer::SwapBuffer(bool mainWindow)
 	cemu_assert_debug(m_numSubmittedCmdBuffers > 0);
 
 	// wait for the previous frame to finish rendering
-	WaitCommandBufferFinished(m_commandBufferIDOfPrevFrame);
+	{
+		LattePerfStatTimerScope timing(performanceMonitor.vk.previousFrameWaitTime);
+		WaitCommandBufferFinished(m_commandBufferIDOfPrevFrame);
+	}
 	m_commandBufferIDOfPrevFrame = currentFrameCmdBufferID;
 
 	chainInfo.WaitAvailableFence();
@@ -3182,18 +3303,25 @@ void VulkanRenderer::SwapBuffer(bool mainWindow)
 		if(chainInfo.m_queueDepth >= chainInfo.m_maxQueued)
 		{
 			uint64 waitFrameId = chainInfo.m_presentId - chainInfo.m_queueDepth;
+			performanceMonitor.vk.presentWaitTime.beginMeasuring();
 			vkWaitForPresentKHR(m_logicalDevice, chainInfo.m_swapchain, waitFrameId, 40'000'000);
+			performanceMonitor.vk.presentWaitTime.endMeasuring();
+			performanceMonitor.vk.numPresentWaitsPerFrame.increment();
 			chainInfo.m_queueDepth--;
 		}
 	}
 
+	performanceMonitor.vk.queuePresentTime.beginMeasuring();
 	VkResult result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
+	performanceMonitor.vk.queuePresentTime.endMeasuring();
+	performanceMonitor.vk.numPresentCallsPerFrame.increment();
 	if (result < 0 && result != VK_ERROR_OUT_OF_DATE_KHR
 #if BOOST_PLAT_ANDROID
 		&& result != VK_ERROR_SURFACE_LOST_KHR
 #endif
 	)
 	{
+		cemuLog_log(LogType::Force, "Vulkan error event: call=vkQueuePresentKHR result={} deviceLost={}", static_cast<sint32>(result), result == VK_ERROR_DEVICE_LOST);
 		throw std::runtime_error(fmt::format("Failed to present image: {}", result));
 	}
 
@@ -3246,6 +3374,8 @@ void VulkanRenderer::SwapBuffers(bool swapTV, bool swapDRC)
 
 	if (swapDRC && IsSwapchainInfoValid(false))
 		SwapBuffer(false);
+	if (m_gpuTimestampPool != VK_NULL_HANDLE)
+		m_gpuTimestampTracker.CloseFrame(LattePerformanceMonitor_gpuFrameComplete);
 
 	if(swapTV)
 		VulkanBenchmarkPrintResults();
@@ -3266,7 +3396,7 @@ void VulkanRenderer::ClearColorbuffer(bool padView)
 
 void VulkanRenderer::ClearColorImageRaw(VkImage image, uint32 sliceIndex, uint32 mipIndex, const VkClearColorValue& color, VkImageLayout inputLayout, VkImageLayout outputLayout)
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Clear);
 
 	VkImageSubresourceRange subresourceRange{};
 	subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -3336,7 +3466,7 @@ void VulkanRenderer::DrawBackbufferQuad(LatteTextureView* texView, RendererOutpu
 
 	auto& chainInfo = GetChainInfo(!padView);
 	LatteTextureViewVk* texViewVk = (LatteTextureViewVk*)texView;
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Presentation);
 
 	// barrier for input texture
 	VkMemoryBarrier memoryBarrier{};
@@ -3601,7 +3731,7 @@ VkDescriptorSetInfo::~VkDescriptorSetInfo()
 
 void VulkanRenderer::texture_clearSlice(LatteTexture* hostTexture, sint32 sliceIndex, sint32 mipIndex)
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::Clear);
 	auto vkTexture = (LatteTextureVk*)hostTexture;
 	if (vkTexture->isDepth)
 		texture_clearDepthSlice(hostTexture, sliceIndex, mipIndex, true, vkTexture->hasStencil, 0.0f, 0);
@@ -3624,7 +3754,7 @@ void VulkanRenderer::texture_clearColorSlice(LatteTexture* hostTexture, sint32 s
 
 void VulkanRenderer::texture_clearDepthSlice(LatteTexture* hostTexture, uint32 sliceIndex, sint32 mipIndex, bool clearDepth, bool clearStencil, float depthValue, uint32 stencilValue)
 {
-	draw_endRenderPass(); // vkCmdClearDepthStencilImage must not be inside renderpass
+	draw_endRenderPass(RenderPassEndReason::Clear); // vkCmdClearDepthStencilImage must not be inside renderpass
 
 	auto vkTexture = (LatteTextureVk*)hostTexture;
 
@@ -3669,7 +3799,7 @@ void VulkanRenderer::texture_loadSlice(LatteTexture* hostTexture, sint32 width, 
 	auto vkImageObj = vkTexture->GetImageObj();
 	vkImageObj->flagForCurrentCommandBuffer();
 
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::TextureTransfer);
 
 	VkMemoryRequirements memRequirements;
 	vkGetImageMemoryRequirements(m_logicalDevice, vkImageObj->m_image, &memRequirements);
@@ -3782,7 +3912,7 @@ void VulkanRenderer::texture_copyImageSubData(LatteTexture* src, sint32 srcMip, 
 	LatteTextureVk* srcVk = static_cast<LatteTextureVk*>(src);
 	LatteTextureVk* dstVk = static_cast<LatteTextureVk*>(dst);
 
-	draw_endRenderPass(); // vkCmdCopyImage must be called outside of a renderpass
+	draw_endRenderPass(RenderPassEndReason::TextureTransfer); // vkCmdCopyImage must be called outside of a renderpass
 
 	VKRObjectTexture* srcVkObj = srcVk->GetImageObj();
 	VKRObjectTexture* dstVkObj = dstVk->GetImageObj();
@@ -3928,6 +4058,35 @@ void VulkanRenderer::buffer_bindVertexBuffers(std::span<BindBufferParam> binding
 	}
 }
 
+bool VulkanRenderer::buffer_tryBindSmallVertexBuffer(uint8 bufferIndex, uint16 stride, const uint8* data, uint32 size)
+{
+#if BOOST_PLAT_ANDROID
+	static constexpr uint32 kMaxDirectVertexUploadSize = 4 * 1024;
+	static constexpr uint32 kMaxDirectVertexUploadsPerFrame = 512;
+	static constexpr uint32 kMaxDirectVertexUploadBytesPerFrame = 512 * 1024;
+	if (size == 0 || size > kMaxDirectVertexUploadSize)
+		return false;
+	if (performanceMonitor.vk.numDirectVertexUploadsPerFrame.get() >= kMaxDirectVertexUploadsPerFrame ||
+		performanceMonitor.vk.numDirectVertexUploadBytesPerFrame.get() + size > kMaxDirectVertexUploadBytesPerFrame)
+		return false;
+	(void)stride;
+
+	auto& vertexAllocator = memoryManager->getMetalStrideWorkaroundAllocator();
+	auto reservation = vertexAllocator.AllocateBufferMemory(size, 128);
+	memcpy(reservation.memPtr, data, size);
+
+	cemu_assert_debug(bufferIndex < Latte::GPU_LIMITS::NUM_VERTEX_BUFFERS);
+	m_state.currentVertexBinding[bufferIndex].offset = 0xFFFFFFFF;
+	VkDeviceSize bindOffset = reservation.bufferOffset;
+	vkCmdBindVertexBuffers(m_state.currentCommandBuffer, bufferIndex, 1, &reservation.vkBuffer, &bindOffset);
+	performanceMonitor.vk.numDirectVertexUploadsPerFrame.increment();
+	performanceMonitor.vk.numDirectVertexUploadBytesPerFrame.add(size);
+	return true;
+#else
+	return false;
+#endif
+}
+
 void VulkanRenderer::buffer_bindVertexStrideWorkaroundBuffer(VkBuffer fixedBuffer, uint32 offset, uint32 bufferIndex, uint32 size)
 {
 	cemu_assert_debug(bufferIndex < Latte::GPU_LIMITS::NUM_VERTEX_BUFFERS);
@@ -4001,7 +4160,7 @@ void VulkanRenderer::bufferCache_init(const sint32 bufferSize)
 
 void VulkanRenderer::bufferCache_upload(uint8* buffer, sint32 size, uint32 bufferOffset)
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::BufferTransfer);
 
 	VKRSynchronizedRingAllocator& vkMemAllocator = memoryManager->getStagingAllocator();
 
@@ -4027,7 +4186,7 @@ void VulkanRenderer::bufferCache_upload(uint8* buffer, sint32 size, uint32 buffe
 void VulkanRenderer::bufferCache_copy(uint32 srcOffset, uint32 dstOffset, uint32 size)
 {
 	cemu_assert_debug(!m_useHostMemoryForCache);
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::BufferTransfer);
 
 	barrier_sequentializeTransfer();
 
@@ -4045,7 +4204,7 @@ void VulkanRenderer::bufferCache_copy(uint32 srcOffset, uint32 dstOffset, uint32
 
 void VulkanRenderer::bufferCache_copyStreamoutToMainBuffer(uint32 srcOffset, uint32 dstOffset, uint32 size)
 {
-	draw_endRenderPass();
+	draw_endRenderPass(RenderPassEndReason::BufferTransfer);
 
 	VkBuffer dstBuffer;
 	if (m_useHostMemoryForCache)
@@ -4471,7 +4630,10 @@ void VKRObjectPipeline::SetPipeline(VkPipeline newPipeline)
 		return;
 	cemu_assert_debug(m_pipeline == VK_NULL_HANDLE); // replacing an already assigned pipeline is not intended
 	if(m_pipeline == VK_NULL_HANDLE && newPipeline != VK_NULL_HANDLE)
+	{
 		performanceMonitor.vk.numGraphicPipelines.increment();
+		performanceMonitor.vk.numGraphicPipelineCreations.increment();
+	}
 	else if(m_pipeline != VK_NULL_HANDLE && newPipeline == VK_NULL_HANDLE)
 		performanceMonitor.vk.numGraphicPipelines.decrement();
 	m_pipeline = newPipeline;

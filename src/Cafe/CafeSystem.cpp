@@ -207,6 +207,7 @@ void InfoLog_TitleLoaded()
 	uint64 titleId = CafeSystem::GetForegroundTitleId();
 	cemuLog_log(LogType::Force, "------- Loaded title -------");
 	cemuLog_log(LogType::Force, "TitleId: {:08x}-{:08x}", (uint32)(titleId >> 32), (uint32)(titleId & 0xFFFFFFFF));
+	cemuLog_log(LogType::Force, "Title name: {}", CafeSystem::GetForegroundTitleName());
 	cemuLog_log(LogType::Force, "TitleVersion: v{}", CafeSystem::GetForegroundTitleVersion());
 	CafeConsoleRegion region = CafeSystem::GetForegroundTitleRegion();
 	if(region == CafeConsoleRegion::JPN)

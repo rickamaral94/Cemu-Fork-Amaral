@@ -1,5 +1,8 @@
 #pragma once
 
+#include <array>
+#include <optional>
+
 #define PERFORMANCE_MONITOR_TRACK_CYCLES	(5) // one cycle lasts one second
 
 // todo - replace PPCTimer with HighResolutionTimer.h
@@ -12,16 +15,31 @@ public:
 	void beginMeasuring()
 	{
 		timerStart = PPCTimer_getRawTsc();
+		isMeasuring = true;
 	}
 
 	void endMeasuring()
 	{
 		uint64 dif = PPCTimer_getRawTsc() - timerStart;
 		currentSum += dif;
+		isMeasuring = false;
 	}
 
 	void frameFinished()
 	{
+		previousFrame = currentSum;
+		currentSum = 0;
+	}
+
+	// Use for broad scopes which may remain active when presentation closes a frame.
+	void frameFinishedIncludingActive()
+	{
+		if (isMeasuring)
+		{
+			const uint64 now = PPCTimer_getRawTsc();
+			currentSum += now - timerStart;
+			timerStart = now;
+		}
 		previousFrame = currentSum;
 		currentSum = 0;
 	}
@@ -35,6 +53,24 @@ private:
 	uint64 currentSum{};
 	uint64 previousFrame{};
 	uint64 timerStart{};
+	bool isMeasuring{};
+};
+
+class LattePerfStatTimerScope
+{
+public:
+	explicit LattePerfStatTimerScope(LattePerfStatTimer& timer) : m_timer(timer)
+	{
+		m_timer.beginMeasuring();
+	}
+
+	~LattePerfStatTimerScope()
+	{
+		m_timer.endMeasuring();
+	}
+
+private:
+	LattePerfStatTimer& m_timer;
 };
 
 class LattePerfStatCounter
@@ -43,6 +79,11 @@ public:
 	void increment()
 	{
 		m_value++;
+	}
+
+	void add(uint32 count)
+	{
+		m_value += count;
 	}
 
 	void decrement()
@@ -98,7 +139,25 @@ typedef struct
 	LattePerfStatTimer gpuTime_frameTime;
 	LattePerfStatTimer gpuTime_shaderCreate;
 	LattePerfStatTimer gpuTime_idleTime; // time spent waiting for new commands from CPU
+	LattePerfStatTimer gpuTime_commandBuffer; // time spent processing indirect command buffers, including draw execution
+	LattePerfStatTimer gpuTime_continuousDrawPass; // inclusive time in the optimized continuous draw parser
 	LattePerfStatTimer gpuTime_fenceTime; // time spent waiting for fence condition
+
+	struct
+	{
+		// Packet categories are defined in LatteCommandProcessor.cpp. These are
+		// GPU-thread-only diagnostic counters, so atomics would only add noise.
+		std::array<uint32, 5> continuousPackets{};
+		std::array<uint32, 5> continuousWords{};
+		std::array<uint32, 5> genericPackets{};
+		std::array<uint32, 5> genericWords{};
+		std::array<uint32, 6> genericRegisterPackets{};
+		std::array<uint32, 6> genericRegisterWords{};
+		std::array<uint32, 6> genericRegisterLoadPackets{};
+		std::array<std::array<uint32, 4>, 6> genericRegisterWidthPackets{};
+		std::array<uint32, 3> genericTransferPackets{};
+		std::array<LattePerfStatTimer, 3> genericTransferTime{};
+	}commandProcessor;
 
 	LattePerfStatTimer gpuTime_dcStageTextures; // drawcall texture/mrt setup
 	LattePerfStatTimer gpuTime_dcStageVertexMgr; // drawcall vertex setup and upload
@@ -122,6 +181,7 @@ typedef struct
 		LattePerfStatCounter numDescriptorStorageBuffers;
 		LattePerfStatCounter numDescriptorSamplerTextures;
 		LattePerfStatCounter numGraphicPipelines;
+		LattePerfStatCounter numGraphicPipelineCreations;
 		LattePerfStatCounter numImages;
 		LattePerfStatCounter numImageViews;
 		LattePerfStatCounter numSamplers;
@@ -130,7 +190,105 @@ typedef struct
 
 		// per frame
 		LattePerfStatCounter numDrawBarriersPerFrame;
+		LattePerfStatCounter numInputTextureBarriersPerFrame;
+		LattePerfStatCounter numRenderPassLoadBarriersPerFrame;
+		LattePerfStatCounter numSkippedColorFeedbackBarriersPerFrame;
 		LattePerfStatCounter numBeginRenderpassPerFrame;
+		LattePerfStatCounter numRenderPassFboChangesPerFrame;
+		LattePerfStatCounter numRenderPassSelfDependencySplitsPerFrame;
+		LattePerfStatCounter numRenderPassReopensSameFboPerFrame;
+		LattePerfStatCounter numRenderPassEndsSubmitPerFrame;
+		LattePerfStatCounter numRenderPassEndsPresentationPerFrame;
+		LattePerfStatCounter numRenderPassEndsClearPerFrame;
+		LattePerfStatCounter numRenderPassEndsTextureTransferPerFrame;
+		LattePerfStatCounter numRenderPassEndsBufferTransferPerFrame;
+		LattePerfStatCounter numRenderPassEndsQueryPerFrame;
+		LattePerfStatCounter numRenderPassEndsReadbackPerFrame;
+		LattePerfStatCounter numRenderPassEndsFboTransitionPerFrame;
+		LattePerfStatCounter numRenderPassEndsOtherPerFrame;
+		LattePerfStatCounter numBufferCacheInitialUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheChangedUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheStreamoutUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCachePagesCheckedPerFrame;
+		LattePerfStatCounter numBufferCachePagesChangedPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUniformUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheVertexUniformUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCacheGeometryUniformUploadsPerFrame;
+		LattePerfStatCounter numBufferCacheGeometryUniformUploadBytesPerFrame;
+		LattePerfStatCounter numBufferCachePixelUniformUploadsPerFrame;
+		LattePerfStatCounter numBufferCachePixelUniformUploadBytesPerFrame;
+		LattePerfStatCounter numDirectVertexUploadsPerFrame;
+		LattePerfStatCounter numDirectVertexUploadBytesPerFrame;
+		LattePerfStatCounter numDirectVertexProbesPerFrame;
+		LattePerfStatCounter numDirectVertexChangesPerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsPerFrame;
+		LattePerfStatCounter numDirectVertexDemotionsPerFrame;
+		LattePerfStatCounter numDirectVertexSmallRequestsPerFrame;
+		LattePerfStatCounter numDirectVertexHistoryMissesPerFrame;
+		LattePerfStatCounter numDirectVertexCacheHitsPerFrame;
+		LattePerfStatCounter numDirectVertexLearningUploadsPerFrame;
+		LattePerfStatCounter numDirectVertexSameFrameUploadsPerFrame;
+		LattePerfStatCounter numDirectVertexRingRejectsPerFrame;
+		LattePerfStatCounter numDirectVertexOversizedUploadsPerFrame;
+		LattePerfStatCounter numDirectVertexOversizedUploadBytesPerFrame;
+		LattePerfStatCounter numDirectVertexHistoryResetsPerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe256PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe512PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe1024PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe2048PerFrame;
+		LattePerfStatCounter numDirectVertexPromotionsLe4096PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe256PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe512PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe1024PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe2048PerFrame;
+		LattePerfStatCounter numDirectVertexBindsLe4096PerFrame;
+		LattePerfStatCounter numFastDrawPassEndsStreamoutPerFrame;
+		LattePerfStatCounter numFastDrawPassEndsQueueEmptyPerFrame;
+		LattePerfStatCounter numFastDrawPassEndsTextureChangePerFrame;
+		LattePerfStatCounter numFastDrawPassEndsContextChangePerFrame;
+		std::array<LattePerfStatCounter, 16> numFastDrawPassEndsContextBucketPerFrame;
+		std::array<LattePerfStatCounter, 16> numFastDrawPassEndsContextA2BucketPerFrame;
+		std::array<LattePerfStatCounter, 16> numFastDrawPassEndsContextA21RegisterPerFrame;
+		std::array<LattePerfStatCounter, 16> numFastDrawPassEndsContextA22RegisterPerFrame;
+		std::array<LattePerfStatCounter, 32> numFastDrawContextRegisterChangesPerFrame;
+		LattePerfStatCounter numVulkanDrawSequenceBeginsPerFrame;
+		LattePerfStatCounter numVulkanPipelineCacheQueriesPerFrame;
+		LattePerfStatCounter numVulkanPipelineCacheHitsPerFrame;
+		LattePerfStatCounter numVulkanPipelineCacheMissesPerFrame;
+		LattePerfStatCounter numVulkanPipelineReadyUsesPerFrame;
+		LattePerfStatCounter numVulkanPipelineUnavailableUsesPerFrame;
+		LattePerfStatCounter numVulkanPipelineBindsPerFrame;
+		LattePerfStatCounter numVulkanPipelineRedundantBindSkipsPerFrame;
+		LattePerfStatTimer vulkanDrawSequenceBeginTime;
+		LattePerfStatTimer vulkanPipelineCacheQueryTime;
+		LattePerfStatTimer vulkanPipelineBindTime;
+		LattePerfStatTimer vulkanFirstDrawTime;
+		LattePerfStatTimer vulkanContinuedDrawTime;
+		// CPU time spent inside Vulkan entry points. These durations describe host
+		// calls and blocking only; present call time is not display latency.
+		LattePerfStatTimer queueSubmitTime;
+		LattePerfStatTimer acquireImageTime;
+		LattePerfStatTimer queuePresentTime;
+		LattePerfStatTimer presentWaitTime;
+		LattePerfStatTimer commandBufferFenceWaitTime;
+		LattePerfStatTimer submittedFenceWaitTime;
+		LattePerfStatTimer swapchainFenceWaitTime;
+		LattePerfStatTimer previousFrameWaitTime; // inclusive: contains submitted fence waits
+		LattePerfStatTimer deviceIdleWaitTime;
+		LattePerfStatTimer gpuTimingCpuTime;
+		const char* gpuTimestampReason{"timestamp-instrumentation-not-enabled"};
+		LattePerfStatCounter numQueueSubmitsPerFrame;
+		LattePerfStatCounter numSubmittedCommandBuffersPerFrame;
+		LattePerfStatCounter numAcquireCallsPerFrame;
+		LattePerfStatCounter numPresentCallsPerFrame;
+		LattePerfStatCounter numPresentWaitsPerFrame;
+		LattePerfStatCounter numSwapchainRecreatesPerFrame;
+		LattePerfStatCounter numFastDrawPassEndsSamplerChangePerFrame;
+		LattePerfStatCounter numFastDrawPassEndsUnsupportedType3PerFrame;
+		LattePerfStatCounter numFastDrawPassEndsUnsupportedPacketPerFrame;
 	}vk;
 
 	// calculated stats (per frame)
@@ -144,6 +302,7 @@ extern performanceMonitor_t performanceMonitor;
 
 void LattePerformanceMonitor_frameEnd();
 void LattePerformanceMonitor_frameBegin();
+void LattePerformanceMonitor_gpuFrameComplete(std::optional<double> timeMs);
 
 #define beginPerfMonProfiling(__obj) if( THasProfiling ) __obj.beginMeasuring()
 #define endPerfMonProfiling(__obj) if( THasProfiling ) __obj.endMeasuring()
