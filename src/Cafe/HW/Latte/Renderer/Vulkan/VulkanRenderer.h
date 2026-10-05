@@ -242,7 +242,7 @@ public:
 
 	VkDescriptorPool GetDescriptorPool() const { return m_descriptorPool; }
 
-	void WaitDeviceIdle() const { vkDeviceWaitIdle(m_logicalDevice); }
+	void WaitDeviceIdle() const;
 
 	void Initialize() override;
 	void Shutdown() override;

@@ -7,6 +7,19 @@ import org.junit.Test
 
 class PerformanceWindowExportTest {
     @Test
+    fun separatesWaitCausesAndLeavesLegacyBreakdownUnavailable() {
+        val legacy = parsePerformanceWindow(windowLine(20.0, 40.0), 0)!!
+        assertNull(legacy.submittedFenceWaitMs)
+        assertNull(legacy.swapchainFenceWaitMs)
+        val current = parsePerformanceWindow(windowLine(20.0, 40.0) +
+            " submittedFenceWaitMs=12 swapchainFenceWaitMs=3 previousFrameWaitMs=12.5 deviceIdleWaitMs=0 commandProcessingMs=15 continuousDrawPassMs=4 outsideCommandProcessingMs=17", 0)!!
+        assertEquals(12.0, current.submittedFenceWaitMs!!, 0.001)
+        assertEquals(3.0, current.swapchainFenceWaitMs!!, 0.001)
+        assertEquals(12.5, current.previousFrameWaitMs!!, 0.001)
+        assertEquals(17.0, current.outsideCommandProcessingMs!!, 0.001)
+    }
+
+    @Test
     fun parsesVersionedWindowWithoutInventingGpuTime() {
         val log = """
             Cemu Vulkan window v1: durationMs=1001 fpsEffective=20.00 frames=20 renderCpuMs=40.000 commandIdleMs=8.000 nonIdleMs=32.000 fenceWaitMs=3.000 commandBufferFenceWaitMs=2.000 asyncWaitMs=0.100 shaderCreateMs=0.000 queueSubmitCalls=2 commandBuffers=2 queueSubmitCpuMs=0.050 acquireCalls=1 acquireCpuMs=0.200 presentCalls=1 presentCallCpuMs=0.030 presentWaitCalls=0 presentWaitMs=0.000 swapchainRecreates=0 gpuTimeMs=unavailable gpuReason=timestamp-instrumentation-not-enabled coveragePct=0 droppedSamples=0

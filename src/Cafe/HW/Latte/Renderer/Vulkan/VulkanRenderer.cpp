@@ -2298,13 +2298,21 @@ void VulkanRenderer::ProcessFinishedCommandBuffers()
 	}
 }
 
+void VulkanRenderer::WaitDeviceIdle() const
+{
+	LattePerfStatTimerScope timing(performanceMonitor.vk.deviceIdleWaitTime);
+	vkDeviceWaitIdle(m_logicalDevice);
+}
+
 void VulkanRenderer::WaitForNextFinishedCommandBuffer()
 {
 	cemu_assert_debug(m_commandBufferSyncIndex != m_commandBufferIndex);
 	// wait on least recently submitted command buffer
+	performanceMonitor.vk.submittedFenceWaitTime.beginMeasuring();
 	performanceMonitor.vk.commandBufferFenceWaitTime.beginMeasuring();
 	VkResult result = vkWaitForFences(m_logicalDevice, 1, &m_cmdBufferFences[m_commandBufferSyncIndex], true, UINT64_MAX);
 	performanceMonitor.vk.commandBufferFenceWaitTime.endMeasuring();
+	performanceMonitor.vk.submittedFenceWaitTime.endMeasuring();
 	if (result == VK_TIMEOUT)
 	{
 		cemuLog_log(LogType::Force, "vkWaitForFences: Returned VK_TIMEOUT on infinite fence");
@@ -3263,7 +3271,10 @@ void VulkanRenderer::SwapBuffer(bool mainWindow)
 	cemu_assert_debug(m_numSubmittedCmdBuffers > 0);
 
 	// wait for the previous frame to finish rendering
-	WaitCommandBufferFinished(m_commandBufferIDOfPrevFrame);
+	{
+		LattePerfStatTimerScope timing(performanceMonitor.vk.previousFrameWaitTime);
+		WaitCommandBufferFinished(m_commandBufferIDOfPrevFrame);
+	}
 	m_commandBufferIDOfPrevFrame = currentFrameCmdBufferID;
 
 	chainInfo.WaitAvailableFence();

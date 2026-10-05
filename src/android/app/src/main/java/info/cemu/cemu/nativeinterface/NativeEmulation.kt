@@ -6,6 +6,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 object NativeEmulation {
+    @Volatile
+    var sessionConfigurationLogger: ((String?, String, String) -> Unit)? = null
+
+    @Keep
+    @JvmStatic
+    @Suppress("unused")
+    private fun captureSessionConfiguration(driverPath: String?, titleId: String, profilePath: String) {
+        sessionConfigurationLogger?.invoke(driverPath, titleId, profilePath)
+    }
+
     private val _ppcProcessExitStatus = MutableStateFlow<Int?>(null)
     val ppcProcessExitStatus = _ppcProcessExitStatus.asStateFlow()
 

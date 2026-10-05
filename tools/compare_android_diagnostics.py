@@ -48,12 +48,26 @@ def compare(first_path, second_path):
     first_report, first_windows = read_bundle(first_path)
     second_report, second_windows = read_bundle(second_path)
     divergences = []
-    for path in IDENTITY_PATHS:
+    identity_paths = IDENTITY_PATHS
+    if max(first_report.get("schemaVersion", 0), second_report.get("schemaVersion", 0)) >= 4:
+        identity_paths = tuple(path for path in IDENTITY_PATHS if path != ("settings", "settingsSha256")) + (
+            ("settings", "emulationSettingsSha256"), ("settings", "gameProfileSha256"),
+            ("settings", "source"), ("graphics", "identitySource"),
+        )
+        for label, report in (("a", first_report), ("b", second_report)):
+            for path in (("settings", "source"), ("graphics", "identitySource")):
+                if value_at(report, path) != "session-start":
+                    divergences.append({"field": f"{label}." + ".".join(path), "reason": "session snapshot required"})
+            for key in ("pipelineCacheUUID", "driverVersion"):
+                value = value_at(report, ("graphics", "vulkanReported", key))
+                if value is None or str(value).lower().startswith("unavailable"):
+                    divergences.append({"field": f"{label}.graphics.vulkanReported.{key}", "reason": "runtime identity required"})
+    for path in identity_paths:
         left, right = value_at(first_report, path), value_at(second_report, path)
         if left != right or left is None or right is None or str(left).lower().startswith("unavailable") or str(right).lower().startswith("unavailable"):
             divergences.append({"field": ".".join(path), "a": left, "b": right})
     metrics = {}
-    for name in ("frameMsMedian", "renderCpuMs", "gpuTimeMs", "gpuTimePerFrameMs", "gpuFrameMsP95", "gpuTimingCpuMs", "fenceWaitMs", "queueSubmitCpuMs"):
+    for name in ("frameMsMedian", "renderCpuMs", "gpuTimeMs", "gpuTimePerFrameMs", "gpuFrameMsP95", "gpuTimingCpuMs", "fenceWaitMs", "queueSubmitCpuMs", "submittedFenceWaitMs", "swapchainFenceWaitMs", "previousFrameWaitMs", "deviceIdleWaitMs", "commandProcessingMs", "continuousDrawPassMs", "outsideCommandProcessingMs", "presentCallCpuMs"):
         left, right = metric(first_windows, name), metric(second_windows, name)
         metrics[name] = {"a": left, "b": right}
         if left and right:
@@ -63,6 +77,7 @@ def compare(first_path, second_path):
         "schemaVersion": 1,
         "comparable": not divergences and bool(first_windows) and bool(second_windows),
         "configurationDivergences": divergences,
+        "drivers": {label: report.get("graphics", {}) for label, report in (("a", first_report), ("b", second_report))},
         "thermal": {"a": first_report.get("device", {}).get("thermalStatus"), "b": second_report.get("device", {}).get("thermalStatus")},
         "gpuCoveragePct": {"a": first_report.get("performance", {}).get("gpuCoveragePct"), "b": second_report.get("performance", {}).get("gpuCoveragePct")},
         "metrics": metrics,

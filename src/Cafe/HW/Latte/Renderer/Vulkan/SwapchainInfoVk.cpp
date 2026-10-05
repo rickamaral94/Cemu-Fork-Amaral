@@ -274,9 +274,11 @@ void SwapchainInfoVk::WaitAvailableFence()
 {
 	if(m_awaitableFence != VK_NULL_HANDLE)
 	{
+		performanceMonitor.vk.swapchainFenceWaitTime.beginMeasuring();
 		performanceMonitor.vk.commandBufferFenceWaitTime.beginMeasuring();
 		vkWaitForFences(m_logicalDevice, 1, &m_awaitableFence, VK_TRUE, UINT64_MAX);
 		performanceMonitor.vk.commandBufferFenceWaitTime.endMeasuring();
+		performanceMonitor.vk.swapchainFenceWaitTime.endMeasuring();
 	}
 	m_awaitableFence = VK_NULL_HANDLE;
 }

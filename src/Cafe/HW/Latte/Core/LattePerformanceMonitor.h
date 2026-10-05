@@ -274,6 +274,10 @@ typedef struct
 		LattePerfStatTimer queuePresentTime;
 		LattePerfStatTimer presentWaitTime;
 		LattePerfStatTimer commandBufferFenceWaitTime;
+		LattePerfStatTimer submittedFenceWaitTime;
+		LattePerfStatTimer swapchainFenceWaitTime;
+		LattePerfStatTimer previousFrameWaitTime; // inclusive: contains submitted fence waits
+		LattePerfStatTimer deviceIdleWaitTime;
 		LattePerfStatTimer gpuTimingCpuTime;
 		const char* gpuTimestampReason{"timestamp-instrumentation-not-enabled"};
 		LattePerfStatCounter numQueueSubmitsPerFrame;

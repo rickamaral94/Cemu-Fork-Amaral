@@ -358,7 +358,7 @@ transfer or synchronization behavior is changed.
 
 ## Diagnóstico comparável de drivers Vulkan
 
-O schema 3 do pacote mantém `report.json` e `log.txt` e acrescenta
+O schema 4 do pacote mantém `report.json` e `log.txt` e acrescenta
 `performance-windows-v1.jsonl`. Cada linha representa uma janela de cerca de um
 segundo, declara unidades e separa CPU do core, tempo dentro de chamadas Vulkan,
 esperas e cadência observada. `presentCallCpuMs` mede somente a duração host de
@@ -450,3 +450,66 @@ Kotlin verifica parsing, unidades, cobertura ponderada e máximos reais.
 No Odin2 Portal: repetir primeiro a mesma cena com cache aquecido, conferir
 `enabled=true`, tempos numéricos e cobertura, e comparar correção visual, FPS,
 memória, temperatura e overhead antes do A/B entre drivers.
+
+
+### Identidade e configuração da sessão
+
+As capturas A/B e B/A no Odin2 Portal (Adreno 740, Wind Waker HD, drivers
+4.7.3.1 e 4.7.4.1) mostraram uma sessão exportada com nome de driver novo, mas
+UUID e versão Mesa do driver anterior. O exportador consultava a seleção atual
+mesmo quando escolhia `last-completed-game-session`. A configuração agora é
+capturada após aplicação do perfil do título, imediatamente antes do loader
+Vulkan, e permanece dentro do log arquivado. O título do snapshot deve coincidir
+com o título do log; ausência, versão desconhecida ou erro não usa dados atuais.
+
+`graphics.requestedCustomDriver` identifica o pacote solicitado nessa sessão.
+`graphics.driverMode` vem do resultado do loader; `customDriver` fica ausente
+quando houve fallback ao sistema. `vulkanReported` continua registrando versão,
+UUID e propriedades realmente anunciadas pelo Vulkan. Metadados de pacote são
+declarativos; o UUID não constitui um checksum do arquivo do driver.
+
+`settings.source=session-start` declara a origem. `settingsSha256` preserva o
+hash bruto do XML lido na captura; `emulationSettingsSha256` inclui o mesmo XML
+sem `custom_driver_path`, normaliza somente espaços entre tags e acrescenta os
+valores gráficos lidos em memória. `gameProfileSha256` inclui o perfil efetivo
+(local ou default), sem comentários e sem a seção `AndroidDriver`. O comparador
+schema 4 exige ambos os hashes normalizados, snapshot e identidade Vulkan; assim
+a troca do driver não invalida sozinha a configuração. Outros campos do XML
+continuam significativos de forma conservadora. Nenhum conteúdo de XML, perfil
+ou caminho é exportado. Sessões antigas têm configurações indisponíveis quando
+exportadas pelo novo APK, em vez de receberem a configuração atual.
+
+`resolutionGraphicPackPreset` registra o preset solicitado pelo pack Resolution;
+não é uma medição da dimensão de todos os render targets. `internalResolution`
+continua indisponível quando não há fonte real. Dados de aparelho no report são
+do instante de exportação; condições durante o teste vêm da telemetria do log.
+
+### Localizar bloqueios no renderizador
+
+As rodadas invertidas observaram cerca de 27 ms GPU/frame em ambos os drivers,
+mas 19,95 versus 30,05 FPS e aproximadamente 22 ms adicionais de `nonIdleMs`
+no driver anterior. Os novos tempos são observacionais, sem mudar waits,
+semaphores, modo de apresentação ou ordenação de comandos:
+
+- `submittedFenceWaitMs`: host dentro de `vkWaitForFences` dos command buffers.
+- `swapchainFenceWaitMs`: host dentro da espera pela fence de imagem adquirida.
+- `previousFrameWaitMs`: escopo inclusivo de retirada do quadro anterior;
+  contém waits de command buffers e processamento dos resultados concluídos.
+- `deviceIdleWaitMs`: host nas chamadas existentes a `vkDeviceWaitIdle`.
+- `commandProcessingMs` e `continuousDrawPassMs`: escopos inclusivos dos parsers,
+  acumulados para todos os frames da janela.
+- `outsideCommandProcessingMs`: diferença não negativa entre `nonIdleMs` e o
+  escopo de processamento de command buffers, para orientar a investigação.
+
+Esses campos são médias em ms/frame e podem se sobrepor. Não somar escopos
+inclusivos nem tratar `nonIdleMs` como CPU ocupada. O agregado histórico
+`commandBufferFenceWaitMs` continua incluindo fences de comandos e swapchain.
+Campos novos ficam null em logs antigos. `presentCallCpuMs` continua sendo soma
+host por janela, e deve ser dividido por `frames` ao comparar ms/frame.
+
+Validação: testes de sessão arquivada após troca de seleção, marcador ausente ou
+inválido, título divergente, normalização que preserva alterações reais, fallback
+e parsing de causas de espera. No aparelho, repetir A/B e B/A na mesma cena com
+cache aquecido, marcar início/fim, conferir `source=session-start`, os hashes,
+UUID, cobertura GPU, tempos de espera, temperatura e correção visual. O objetivo
+deste incremento é fechar o diagnóstico; nenhum ganho de FPS é prometido.

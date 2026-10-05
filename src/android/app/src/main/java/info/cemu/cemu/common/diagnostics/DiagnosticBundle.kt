@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-const val DIAGNOSTIC_SCHEMA_VERSION = 3
+const val DIAGNOSTIC_SCHEMA_VERSION = 4
 const val MAX_DIAGNOSTIC_LOG_BYTES = 4L * 1024L * 1024L
 
 @Serializable
@@ -57,6 +57,9 @@ data class DiagnosticGraphicsInfo(
     val vulkanReported: Map<String, String> = emptyMap(),
     val presentation: Map<String, String> = emptyMap(),
     val gpuTimestamps: Map<String, String> = emptyMap(),
+    val identitySource: String = "unavailable",
+    val requestedDriverMode: String = "unavailable",
+    val requestedCustomDriver: DiagnosticDriverInfo? = null,
 )
 
 @Serializable
@@ -70,14 +73,17 @@ data class DiagnosticDriverInfo(
 
 @Serializable
 data class DiagnosticSettingsInfo(
-    val asyncShaderCompile: Boolean,
-    val vsyncMode: Int,
-    val accurateBarriers: Boolean,
-    val upscalingFilter: Int,
-    val downscalingFilter: Int,
+    val asyncShaderCompile: Boolean?,
+    val vsyncMode: Int?,
+    val accurateBarriers: Boolean?,
+    val upscalingFilter: Int?,
+    val downscalingFilter: Int?,
     val diagnosticMode: String,
     val settingsSha256: String,
     val activeGraphicPacksSha256: String,
+    val source: String = "unavailable",
+    val emulationSettingsSha256: String = "unavailable",
+    val gameProfileSha256: String = "unavailable",
 )
 
 @Serializable
