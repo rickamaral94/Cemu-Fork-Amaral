@@ -15,7 +15,7 @@
 
 #include "util/helpers/helpers.h"
 
-#ifdef __arm64__
+#if defined(__aarch64__) || defined(__arm64__)
 #if defined(__clang__)
 #include <arm_acle.h>
 #elif defined(_MSC_VER)
@@ -27,7 +27,7 @@ static void ConfigureHostFloatingPointEnvironment()
 {
 #if defined(ARCH_X86_64)
 	_mm_setcsr(_mm_getcsr() | 0x8000);
-#elif defined(__arm64__)
+#elif defined(__aarch64__) || defined(__arm64__)
 	// enable flush-to-zero and preserve NaN signs and payloads (FZ=1, DN=0)
 #if defined(__clang__)
 	__arm_wsr64("fpcr", (__arm_rsr64("fpcr") | (1 << 24)) & ~(1 << 25));

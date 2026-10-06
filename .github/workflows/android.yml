@@ -95,6 +95,11 @@ jobs:
           g++ -std=c++20 -Wall -Wextra -Werror -pedantic -O2 -Isrc tools/android/test_gpu_timestamps.cpp -o "$RUNNER_TEMP/test-gpu-timestamps"
           "$RUNNER_TEMP/test-gpu-timestamps"
 
+      - name: Test stfs architectural reference values
+        run: |
+          g++ -std=c++20 -Wall -Wextra -Werror -Wno-unused-function -Wno-unused-variable -fno-strict-aliasing -O2 -Isrc tools/android/test_ppc_float_reference.cpp -o "$RUNNER_TEMP/test-ppc-float-reference"
+          "$RUNNER_TEMP/test-ppc-float-reference"
+
       - name: Run tests and build nightly APK
         working-directory: src/android
         run: ./gradlew --no-daemon test assembleNightly --stacktrace
