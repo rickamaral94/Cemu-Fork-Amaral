@@ -1,4 +1,5 @@
 #include "PPCRecompiler.h"
+#include "PPCRecompilerDifferentialValues.h"
 
 #include "BackendAArch64/BackendAArch64.h"
 #include "Cafe/HW/Espresso/PPCState.h"
@@ -161,6 +162,87 @@ constexpr std::array<uint32, 2> kFctiwFallbackCode{
 	kReturnToInterpreter,
 };
 
+constexpr std::array<uint32, 13> kSignedDivisionCode{
+	EncodeX(31, 10, 3, 4, 491),         // negative / zero
+	EncodeX(31, 11, 7, 4, 491),         // positive / zero
+	EncodeX(31, 12, 4, 4, 491),         // zero / zero
+	EncodeX(31, 13, 5, 6, 491),         // INT_MIN / -1
+	EncodeX(31, 14, 5, 23, 491),        // INT_MIN / 1
+	EncodeX(31, 15, 5, 5, 491),         // INT_MIN / INT_MIN
+	EncodeX(31, 16, 3, 8, 491),         // -17 / 3
+	EncodeX(31, 17, 7, 9, 491),         // 17 / -3
+	EncodeX(31, 18, 22, 6, 491),        // INT_MAX / -1
+	EncodeX(31, 3, 3, 8, 491),         // destination aliases dividend
+	EncodeX(31, 6, 5, 6, 491),          // destination aliases divisor
+	EncodeX(31, 19, 7, 8, 491, true),   // divw. records positive result and XER[SO]
+	kReturnToInterpreter,
+};
+
+constexpr std::array<uint32, 12> kRecordCr0Code{
+	EncodeX(31, 8, 3, 4, 266, true),   // add. r8, r3, r4 (negative)
+	EncodeX(31, 10, 0, 0, 19),         // mfcr r10
+	EncodeX(31, 3, 9, 3, 316, true),   // xor. r9, r3, r3 (zero)
+	EncodeX(31, 11, 0, 0, 19),         // mfcr r11
+	EncodeD(28, 7, 8, 1),             // andi. r8, r7, 1 (positive, implicit Rc)
+	EncodeX(31, 12, 0, 0, 19),         // mfcr r12
+	EncodeX(31, 9, 3, 4, 491, true),   // divw. r9, r3, r4 (negative)
+	EncodeX(31, 13, 0, 0, 19),         // mfcr r13
+	EncodeX(31, 8, 6, 7, 459, true),   // divwu. r8, r6, r7 (signed CR0 comparison)
+	EncodeX(31, 14, 0, 0, 19),         // mfcr r14
+	EncodeX(31, 9, 7, 7, 266),         // add without Rc preserves CR0
+	kReturnToInterpreter,
+};
+
+static_assert(kRecordCr0Code[1] == 0x7D400026); // mfcr r10
+static_assert(kRecordCr0Code.size() * sizeof(uint32) <= kTestDataOffset);
+
+constexpr auto kSingleStoreCode = []
+{
+	std::array<uint32, PPCRecompilerTestValues::kSingleStoreValues.size() + 1> code{};
+	for (size_t i = 0; i < PPCRecompilerTestValues::kSingleStoreValues.size(); ++i)
+		code[i] = EncodeD(52, static_cast<uint32>(i + 1), 3, static_cast<sint32>(i * 4));
+	code.back() = kReturnToInterpreter;
+	return code;
+}();
+
+constexpr std::array<uint32, 4> kSingleStoreAddressCode{
+	EncodeD(53, 1, 3, 4),              // stfsu f1, 4(r3)
+	EncodeX(31, 2, 3, 4, 663),         // stfsx f2, r3, r4
+	EncodeX(31, 3, 3, 5, 695),         // stfsux f3, r3, r5
+	kReturnToInterpreter,
+};
+
+constexpr std::array<uint32, 12> kSingleStoreRoundedCode{
+	EncodeFloat(63, 2, 0, 3, 12),       // frsp f2, f3
+	EncodeD(52, 2, 3, 4),              // stfs after explicit rounding
+	EncodeFloat(63, 4, 0, 2, 72),       // fmr f4, f2
+	EncodeD(52, 4, 3, 8),              // precision knowledge follows a copy
+	EncodeFloat(59, 5, 2, 2, 21),       // fadds f5, f2, f2
+	EncodeD(52, 5, 3, 12),             // precision knowledge follows arithmetic
+	EncodeFloat(63, 6, 0, 5, 40),       // fneg f6, f5
+	EncodeD(52, 6, 3, 16),             // precision knowledge follows sign change
+	EncodeFloat(63, 2, 0, 3, 72),       // overwrite rounded f2 with unrounded f3
+	EncodeD(52, 2, 3, 20),             // must return to truncating conversion
+	EncodeD(52, 3, 3, 24),             // original source remains unrounded
+	kReturnToInterpreter,
+};
+
+constexpr std::array<uint32, 8> kSingleStoreBranchCode{
+	EncodeFloat(63, 1, 0, 3, 12),       // frsp f1, f3
+	EncodeD(11, 0, 4, 0),              // cmpwi r4, 0
+	0x4182000C,                         // beq to single-precision path
+	EncodeFloat(63, 1, 0, 3, 72),       // one predecessor replaces f1 with a double
+	0x48000008,                         // b to merge
+	EncodeFloat(63, 2, 0, 1, 72),       // other predecessor preserves rounded f1
+	EncodeD(52, 1, 3, 4),              // joined store cannot assume all paths rounded
+	kReturnToInterpreter,
+};
+
+static_assert(kSingleStoreCode.size() * sizeof(uint32) <= kTestDataOffset);
+static_assert(kSingleStoreCode[0] == 0xD0230000); // stfs f1, 0(r3)
+static_assert(kSingleStoreAddressCode[0] == 0xD4230004); // stfsu f1, 4(r3)
+static_assert(kSingleStoreRoundedCode[0] == 0xFC401818); // frsp f2, f3
+
 constexpr std::array<uint32, 2> kInvalidationCodeV1{
 	EncodeD(14, 3, 0, 0x1234),          // li r3, 0x1234
 	kReturnToInterpreter,
@@ -210,6 +292,72 @@ struct DifferentialCase
 
 void SetupNoState(PPCInterpreter_t&, MPTR)
 {
+}
+
+void SetupSignedDivision(PPCInterpreter_t& state, MPTR)
+{
+	state.gpr[3] = static_cast<uint32>(-17);
+	state.gpr[4] = 0;
+	state.gpr[5] = 0x80000000;
+	state.gpr[6] = 0xFFFFFFFF;
+	state.gpr[7] = 17;
+	state.gpr[8] = 3;
+	state.gpr[9] = static_cast<uint32>(-3);
+	state.gpr[22] = 0x7FFFFFFF;
+	state.gpr[23] = 1;
+	state.xer_so = 1;
+}
+
+void SetupRecordCr0SoSet(PPCInterpreter_t& state, MPTR)
+{
+	state.gpr[3] = static_cast<uint32>(-17);
+	state.gpr[4] = 3;
+	state.gpr[6] = 0x80000000;
+	state.gpr[7] = 1;
+	state.xer_so = 1;
+	state.cr[3] = 0; // stale CR0[SO] must be replaced
+}
+
+void SetupRecordCr0SoClear(PPCInterpreter_t& state, MPTR dataAddress)
+{
+	SetupRecordCr0SoSet(state, dataAddress);
+	state.xer_so = 0;
+	state.cr[3] = 1;
+}
+
+void PrepareSingleStoreMemory(MPTR dataAddress)
+{
+	for (uint32 i = 0; i < 64; i += sizeof(uint32))
+		memory_writeU32(dataAddress + i, 0xA5A5A5A5);
+}
+
+void SetupSingleStore(PPCInterpreter_t& state, MPTR dataAddress)
+{
+	state.gpr[3] = dataAddress;
+	for (size_t i = 0; i < PPCRecompilerTestValues::kSingleStoreValues.size(); ++i)
+		state.fpr[i + 1].fp0int = PPCRecompilerTestValues::kSingleStoreValues[i].input;
+}
+
+void SetupSingleStoreAddress(PPCInterpreter_t& state, MPTR dataAddress)
+{
+	state.gpr[3] = dataAddress;
+	state.gpr[4] = 8;
+	state.gpr[5] = 16;
+	state.fpr[1].fp0int = 0x3FF0000018000000ULL;
+	state.fpr[2].fp0int = 0xB6A0000000000000ULL;
+	state.fpr[3].fp0int = 0x7FF8002460000000ULL;
+}
+
+void SetupSingleStoreRounded(PPCInterpreter_t& state, MPTR dataAddress)
+{
+	state.gpr[3] = dataAddress;
+	state.fpr[3].fp0int = 0x3FF0000018000000ULL;
+}
+
+void SetupSingleStoreBranchDouble(PPCInterpreter_t& state, MPTR dataAddress)
+{
+	SetupSingleStoreRounded(state, dataAddress);
+	state.gpr[4] = 1;
 }
 
 void SetupLoadStore(PPCInterpreter_t& state, MPTR dataAddress)
@@ -462,6 +610,100 @@ std::string ValidateSubficMinusOne(const PPCInterpreter_t& state, MPTR)
 	return {};
 }
 
+std::string ValidateSignedDivision(const PPCInterpreter_t& state, MPTR)
+{
+	constexpr std::array<uint32, 10> expected{
+		0xFFFFFFFF, 0, 0, 0xFFFFFFFF, 0x80000000, 1,
+		0xFFFFFFFB, 0xFFFFFFFB, 0x80000001, 5,
+	};
+	for (size_t i = 0; i < expected.size(); ++i)
+	{
+		if (state.gpr[10 + i] != expected[i])
+			return fmt::format("divw r{} expected={:08x} actual={:08x}", 10 + i, expected[i], state.gpr[10 + i]);
+	}
+	if (state.gpr[3] != 0xFFFFFFFB || state.gpr[6] != 0xFFFFFFFF)
+		return "divw aliased destination differs";
+	if (state.cr[0] != 0 || state.cr[1] != 1 || state.cr[2] != 0 || state.cr[3] != 1 || state.xer_so != 1)
+		return fmt::format("divw. CR0 LT={} GT={} EQ={} SO={} XER[SO]={}",
+			state.cr[0], state.cr[1], state.cr[2], state.cr[3], state.xer_so);
+	return {};
+}
+
+std::string ValidateRecordCr0(const PPCInterpreter_t& state, uint32 expectedSo)
+{
+	constexpr std::array<uint32, 5> expectedCr0{8, 2, 4, 8, 8};
+	constexpr std::array<const char*, 5> instructions{"add.", "xor.", "andi.", "divw.", "divwu."};
+	for (size_t i = 0; i < expectedCr0.size(); ++i)
+	{
+		const uint32 expected = (expectedCr0[i] | expectedSo) << 28;
+		if (state.gpr[10 + i] != expected)
+			return fmt::format("{} CR expected={:08x} actual={:08x}", instructions[i], expected, state.gpr[10 + i]);
+	}
+	if (state.gpr[8] != 0x80000000 || state.gpr[9] != 2)
+		return "record instruction result differs";
+	if (state.cr[0] != 1 || state.cr[1] != 0 || state.cr[2] != 0 || state.cr[3] != expectedSo || state.xer_so != expectedSo)
+		return "non-record add changed CR0 or XER[SO]";
+	return {};
+}
+
+std::string ValidateRecordCr0SoSet(const PPCInterpreter_t& state, MPTR)
+{
+	return ValidateRecordCr0(state, 1);
+}
+
+std::string ValidateRecordCr0SoClear(const PPCInterpreter_t& state, MPTR)
+{
+	return ValidateRecordCr0(state, 0);
+}
+
+std::string ValidateSingleStore(const PPCInterpreter_t&, MPTR dataAddress)
+{
+	for (size_t i = 0; i < PPCRecompilerTestValues::kSingleStoreValues.size(); ++i)
+	{
+		const uint32 expected = PPCRecompilerTestValues::kSingleStoreValues[i].expected;
+		const uint32 actual = memory_readU32(dataAddress + static_cast<MPTR>(i * 4));
+		if (actual != expected)
+			return fmt::format("stfs value={} expected={:08x} actual={:08x}", i, expected, actual);
+	}
+	return {};
+}
+
+std::string ValidateSingleStoreAddress(const PPCInterpreter_t& state, MPTR dataAddress)
+{
+	if (state.gpr[3] != dataAddress + 20 || state.gpr[4] != 8 || state.gpr[5] != 16)
+		return "stfs indexed/update address registers differ";
+	if (memory_readU32(dataAddress + 4) != 0x3F800000 ||
+		memory_readU32(dataAddress + 12) != 0x80000001 ||
+		memory_readU32(dataAddress + 20) != 0x7FC00123)
+		return "stfs indexed/update stored bits differ";
+	if (memory_readU32(dataAddress) != 0xA5A5A5A5 || memory_readU32(dataAddress + 8) != 0xA5A5A5A5)
+		return "stfs indexed/update overwrote guard words";
+	return {};
+}
+
+std::string ValidateSingleStoreRounded(const PPCInterpreter_t&, MPTR dataAddress)
+{
+	constexpr std::array<uint32, 6> expected{
+		0x3F800001, 0x3F800001, 0x40000001, 0xC0000001, 0x3F800000, 0x3F800000,
+	};
+	for (size_t i = 0; i < expected.size(); ++i)
+	{
+		const uint32 actual = memory_readU32(dataAddress + static_cast<MPTR>((i + 1) * 4));
+		if (actual != expected[i])
+			return fmt::format("optimized stfs value={} expected={:08x} actual={:08x}", i, expected[i], actual);
+	}
+	return {};
+}
+
+std::string ValidateSingleStoreBranch(const PPCInterpreter_t& state, MPTR dataAddress)
+{
+	const uint32 expected = state.gpr[4] == 0 ? 0x3F800001 : 0x3F800000;
+	const uint32 actual = memory_readU32(dataAddress + 4);
+	if (actual != expected)
+		return fmt::format("joined stfs expected={:08x} actual={:08x}", expected, actual);
+	return {};
+}
+
 std::string ValidateSthbrxAddressPreservation(const PPCInterpreter_t& state, MPTR dataAddress)
 {
 	if (state.gpr[3] != dataAddress)
@@ -682,6 +924,10 @@ bool RunCase(const DifferentialCase& testCase, MPTR codeAddress, MPTR dataAddres
 		else
 			reason = fmt::format("memory interpreter={:08x} jit={:08x}", interpreterDataWord, jitDataWord);
 		cemuLog_log(LogType::Force, "JIT ARM64 differential: case={} result=FAIL reason={}", testCase.name, reason);
+	}
+	else
+	{
+		cemuLog_log(LogType::Force, "JIT ARM64 differential: case={} result=PASS", testCase.name);
 	}
 
 	PPCRecompiler_cleanupAArch64Code(function->x86Code, function->x86Size);
@@ -974,7 +1220,7 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 
 	const MPTR codeAddress = allocation.GetMPTR();
 	const MPTR dataAddress = codeAddress + kTestDataOffset;
-	const std::array<DifferentialCase, 11> cases{
+	const std::array<DifferentialCase, 19> cases{
 		DifferentialCase{"integer-cr-rotate", kIntegerCode, SetupNoState, nullptr, ValidateInteger, false},
 		DifferentialCase{"conditional-branch", kBranchCode, SetupNoState, nullptr, ValidateBranch, false},
 		DifferentialCase{"load-store-endian", kLoadStoreCode, SetupLoadStore, PrepareLoadStoreMemory, ValidateLoadStore, true},
@@ -986,6 +1232,14 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 		DifferentialCase{"unaligned-load-store", kUnalignedLoadStoreCode, SetupUnalignedLoadStore, PrepareUnalignedLoadStoreMemory, ValidateUnalignedLoadStore, false},
 		DifferentialCase{"subfic-minus-one-carry", kSubficMinusOneCode, SetupSubficMinusOne, nullptr, ValidateSubficMinusOne, false},
 		DifferentialCase{"sthbrx-address-preservation", kSthbrxAddressPreservationCode, SetupSthbrxAddressPreservation, PrepareSthbrxMemory, ValidateSthbrxAddressPreservation, false},
+		DifferentialCase{"signed-division-edge-cases", kSignedDivisionCode, SetupSignedDivision, nullptr, ValidateSignedDivision, false},
+		DifferentialCase{"record-cr0-so-set", kRecordCr0Code, SetupRecordCr0SoSet, nullptr, ValidateRecordCr0SoSet, false},
+		DifferentialCase{"record-cr0-so-clear", kRecordCr0Code, SetupRecordCr0SoClear, nullptr, ValidateRecordCr0SoClear, false},
+		DifferentialCase{"stfs-truncation-special-values", kSingleStoreCode, SetupSingleStore, PrepareSingleStoreMemory, ValidateSingleStore, false},
+		DifferentialCase{"stfs-indexed-update", kSingleStoreAddressCode, SetupSingleStoreAddress, PrepareSingleStoreMemory, ValidateSingleStoreAddress, false},
+		DifferentialCase{"stfs-single-precision-dataflow", kSingleStoreRoundedCode, SetupSingleStoreRounded, PrepareSingleStoreMemory, ValidateSingleStoreRounded, false},
+		DifferentialCase{"stfs-branch-merge-rounded", kSingleStoreBranchCode, SetupSingleStoreRounded, PrepareSingleStoreMemory, ValidateSingleStoreBranch, true},
+		DifferentialCase{"stfs-branch-merge-double", kSingleStoreBranchCode, SetupSingleStoreBranchDouble, PrepareSingleStoreMemory, ValidateSingleStoreBranch, true},
 	};
 
 	uint32 passedCount = 0;

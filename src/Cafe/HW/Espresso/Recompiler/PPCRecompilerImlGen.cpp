@@ -414,15 +414,14 @@ void PPCImlGen_UpdateCR0(ppcImlGenContext_t* ppcImlGenContext, IMLReg regR)
 	IMLReg crBitRegLT = _GetRegCR(ppcImlGenContext, 0, Espresso::CR_BIT::CR_BIT_INDEX_LT);
 	IMLReg crBitRegGT = _GetRegCR(ppcImlGenContext, 0, Espresso::CR_BIT::CR_BIT_INDEX_GT);
 	IMLReg crBitRegEQ = _GetRegCR(ppcImlGenContext, 0, Espresso::CR_BIT::CR_BIT_INDEX_EQ);
-	// todo - SO bit
+	IMLReg crBitRegSO = _GetRegCR(ppcImlGenContext, 0, Espresso::CR_BIT::CR_BIT_INDEX_SO);
+	IMLReg regXerSO = PPCRecompilerImlGen_loadRegister(ppcImlGenContext, PPCREC_NAME_XER_SO);
 
 	ppcImlGenContext->emitInst().make_compare_s32(regR, 0, crBitRegLT, IMLCondition::SIGNED_LT);
 	ppcImlGenContext->emitInst().make_compare_s32(regR, 0, crBitRegGT, IMLCondition::SIGNED_GT);
 	ppcImlGenContext->emitInst().make_compare_s32(regR, 0, crBitRegEQ, IMLCondition::EQ);
 
-	//ppcImlGenContext->emitInst().make_r_s32(PPCREC_IML_OP_ASSIGN, crBitRegSO, 0); // todo - copy from XER
-
-	//ppcImlGenContext->emitInst().make_r_r(PPCREC_IML_OP_ASSIGN, registerR, registerR, 0, PPCREC_CR_MODE_LOGICAL);
+	ppcImlGenContext->emitInst().make_r_r(PPCREC_IML_OP_ASSIGN, crBitRegSO, regXerSO);
 }
 
 void PPCRecompilerImlGen_TW(ppcImlGenContext_t* ppcImlGenContext, uint32 opcode)

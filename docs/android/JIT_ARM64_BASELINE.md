@@ -69,7 +69,7 @@ há instrumentação adicionada ao caminho que executa cada bloco recompilado.
 
 ## Testes diferenciais da nightly
 
-Builds nightly executam onze casos sintéticos isolados antes do início do
+Builds nightly executam dezenove casos sintéticos isolados antes do início do
 título. Cada caso parte do mesmo estado, roda uma vez no interpretador e uma vez
 no JIT AArch64 e compara o estado arquitetural resultante. A cobertura inicial
 inclui:
@@ -97,6 +97,27 @@ em vez de executar uma semântica diferente silenciosamente.
 Os casos atômicos também verificam a limpeza da reserva e todos os bits de CR0.
 O bit SO de CR0 deve copiar `XER[SO]`; ele não pode reutilizar o valor anterior
 de CR0.
+
+A sincronização de 2026-10-05 acrescenta seis casos: divisão com sinal por zero,
+overflow e destinos sobrepostos; `stfs` com 16 valores literais (truncamento,
+zeros com sinal, infinitos, NaNs com payload e subnormais); variantes indexadas
+e com atualização de endereço; stores após arredondamento/cópia/aritmética e
+sobrescrita por double; e duas execuções de um store na junção de branches com
+precisões diferentes. O resumo esperado passa a `passed=17 failed=0 total=17`.
+Essa cobertura só é aprovada fisicamente quando aparece no log do aparelho.
+
+A validação da build `631f3f0e-nightly` em 2026-10-06 passou 16/17 casos nos
+dois drivers do Odin2 Portal. Todos os casos `stfs` passaram; a divisão numérica
+também passou, mas `signed-division-edge-cases` detectou CR0[SO] incorreto.
+O helper compartilhado `PPCImlGen_UpdateCR0` não copiava `XER[SO]`, um defeito
+anterior à sincronização upstream. A correção acrescenta essa cópia ao IML.
+Dois novos casos, `record-cr0-so-set` e `record-cr0-so-clear`, partem de CR0[SO]
+oposto ao XER e capturam o CR após `add.`, `xor.`, `andi.`, `divw.` e `divwu.`.
+Os resultados cobrem LT/GT/EQ, comparação com sinal do quociente unsigned e
+preservação de CR0 por um `add` sem Rc. XER[SO] deve permanecer inalterado.
+O novo gate físico é `passed=19 failed=0 total=19`; permanece pendente até
+receber o diagnóstico do APK corrigido. Nenhuma melhoria de FPS é atribuída
+a essa correção de semântica.
 
 O código sintético usa uma pequena alocação temporária no code cave, nunca é
 publicado na tabela de saltos do jogo e é liberado antes de o título começar. Os
