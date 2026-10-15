@@ -1517,9 +1517,9 @@ bool PPCRecompiler_generateAArch64Code(struct PPCRecFunction_t* PPCRecFunction, 
 				aarch64GenContext.ldr(TEMP_GPR2.WReg, AdrUimm(HCPU_REG, offsetof(PPCInterpreter_t, spr.UPIR)));
 				aarch64GenContext.lsl(TEMP_GPR2.XReg, TEMP_GPR2.XReg, 6);
 				aarch64GenContext.add(TEMP_GPR1.XReg, TEMP_GPR1.XReg, TEMP_GPR2.XReg);
-				aarch64GenContext.ldr(TEMP_GPR2.XReg, AdrUimm(TEMP_GPR1.XReg));
+				aarch64GenContext.ldr(TEMP_GPR2.XReg, AdrUimm(TEMP_GPR1.XReg, 0));
 				aarch64GenContext.add(TEMP_GPR2.XReg, TEMP_GPR2.XReg, 1);
-				aarch64GenContext.str(TEMP_GPR2.XReg, AdrUimm(TEMP_GPR1.XReg));
+				aarch64GenContext.str(TEMP_GPR2.XReg, AdrUimm(TEMP_GPR1.XReg, 0));
 			}
 		}
 
