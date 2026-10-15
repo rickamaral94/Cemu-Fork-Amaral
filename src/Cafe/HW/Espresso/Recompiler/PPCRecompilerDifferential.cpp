@@ -1309,6 +1309,10 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 
 	const MPTR codeAddress = allocation.GetMPTR();
 	const MPTR dataAddress = codeAddress + kTestDataOffset;
+	// Keep the baseline and published-invalidation witnesses independent of
+	// the per-game option, including their failure paths. Only the isolated,
+	// unpublished instrumentation witness below embeds counter pointers.
+	PPCRecompiler_ResetEntryProfileForTests(false);
 	const std::array<DifferentialCase, 22> cases{
 		DifferentialCase{"integer-cr-rotate", kIntegerCode, SetupNoState, nullptr, ValidateInteger, false},
 		DifferentialCase{"conditional-branch", kBranchCode, SetupNoState, nullptr, ValidateBranch, false},
