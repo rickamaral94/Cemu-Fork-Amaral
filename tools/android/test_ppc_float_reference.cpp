@@ -1,6 +1,7 @@
 #include <bit>
 #include <cstdint>
 #include <cstdio>
+#include <cfenv>
 
 using uint8 = uint8_t;
 using sint8 = int8_t;
@@ -15,6 +16,21 @@ using uint64 = uint64_t;
 
 int main()
 {
+	const int previousRounding = std::fegetround();
+	if (std::fesetround(FE_TONEAREST) != 0)
+		return 1;
+	for (const auto& value : PPCRecompilerTestValues::kRoundedSingleValues)
+	{
+		volatile double input = std::bit_cast<double>(value.input);
+		const uint64 actual = std::bit_cast<uint64>(static_cast<double>(static_cast<float>(input)));
+		if (actual != value.expectedDouble)
+		{
+			std::fprintf(stderr, "frsp nearest-even literal mismatch\n");
+			return 1;
+		}
+	}
+	if (std::fesetround(previousRounding) != 0)
+		return 1;
 	for (const auto& value : PPCRecompilerTestValues::kSingleStoreValues)
 	{
 		const uint32 actual = ConvertToSingleNoFTZ(value.input);
@@ -32,5 +48,6 @@ int main()
 		return 1;
 	std::printf("stfs interpreter reference: PASS values=%zu roundingRegressionDetected=true\n",
 		PPCRecompilerTestValues::kSingleStoreValues.size());
+	std::printf("frsp nearest-even literal reference: PASS values=%zu\n", PPCRecompilerTestValues::kRoundedSingleValues.size());
 	return 0;
 }

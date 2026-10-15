@@ -1,4 +1,5 @@
 #include "PPCRecompiler.h"
+#include "PPCExecutionProfile.h"
 #include "PPCRecompilerDifferentialValues.h"
 
 #include "BackendAArch64/BackendAArch64.h"
@@ -238,6 +239,41 @@ constexpr std::array<uint32, 8> kSingleStoreBranchCode{
 	kReturnToInterpreter,
 };
 
+constexpr auto kFloatingSignCode = []
+{
+	std::array<uint32, 17> code{};
+	for (uint32 i = 0; i < 8; ++i)
+	{
+		code[i * 2] = EncodeFloat(63, i + 9, 0, i + 1, 72); // fmr
+		code[i * 2 + 1] = EncodeFloat(63, i + 9, 0, i + 9, 40); // fneg, alias
+	}
+	code.back() = kReturnToInterpreter;
+	return code;
+}();
+
+constexpr auto kFloatingAbsCode = []
+{
+	std::array<uint32, 17> code{};
+	for (uint32 i = 0; i < 8; ++i)
+	{
+		code[i * 2] = EncodeFloat(63, i + 9, 0, i + 1, 264); // fabs
+		code[i * 2 + 1] = EncodeFloat(63, i + 17, 0, i + 9, 136); // fnabs
+	}
+	code.back() = kReturnToInterpreter;
+	return code;
+}();
+
+constexpr auto kFloatingRoundCode = []
+{
+	std::array<uint32, 9> code{};
+	for (uint32 i = 0; i < 8; ++i)
+		code[i] = EncodeFloat(63, i + 9, 0, i + 1, 12); // frsp
+	code.back() = kReturnToInterpreter;
+	return code;
+}();
+static_assert(kFloatingSignCode.size() * sizeof(uint32) <= kTestDataOffset);
+static_assert(kFloatingAbsCode.size() * sizeof(uint32) <= kTestDataOffset);
+
 static_assert(kSingleStoreCode.size() * sizeof(uint32) <= kTestDataOffset);
 static_assert(kSingleStoreCode[0] == 0xD0230000); // stfs f1, 0(r3)
 static_assert(kSingleStoreAddressCode[0] == 0xD4230004); // stfsu f1, 4(r3)
@@ -292,6 +328,25 @@ struct DifferentialCase
 
 void SetupNoState(PPCInterpreter_t&, MPTR)
 {
+}
+
+void SetupCore1(PPCInterpreter_t& state, MPTR) { state.spr.UPIR = 1; }
+void SetupCore2(PPCInterpreter_t& state, MPTR) { state.spr.UPIR = 2; }
+
+void SetupFloatingSign(PPCInterpreter_t& state, MPTR)
+{
+	for (size_t i = 0; i < 8; ++i)
+	{
+		state.fpr[i + 1].fp0int = PPCRecompilerTestValues::kSignValues[i];
+		state.fpr[i + 9].fp1int = 0x4004000000000000ULL; // unchanged PS1 sentinel
+		state.fpr[i + 17].fp1int = 0xC008000000000000ULL;
+	}
+}
+
+void SetupFloatingRound(PPCInterpreter_t& state, MPTR)
+{
+	for (size_t i = 0; i < 8; ++i)
+		state.fpr[i + 1].fp0int = PPCRecompilerTestValues::kRoundedSingleValues[i].input;
 }
 
 void SetupSignedDivision(PPCInterpreter_t& state, MPTR)
@@ -664,6 +719,40 @@ std::string ValidateSingleStore(const PPCInterpreter_t&, MPTR dataAddress)
 		const uint32 actual = memory_readU32(dataAddress + static_cast<MPTR>(i * 4));
 		if (actual != expected)
 			return fmt::format("stfs value={} expected={:08x} actual={:08x}", i, expected, actual);
+	}
+	return {};
+}
+
+std::string ValidateFloatingSign(const PPCInterpreter_t& state, MPTR)
+{
+	for (size_t i = 0; i < 8; ++i)
+	{
+		const uint64 expected = PPCRecompilerTestValues::kSignValues[i] ^ 0x8000000000000000ULL;
+		if (state.fpr[i + 9].fp0int != expected || state.fpr[i + 9].fp1int != 0x4004000000000000ULL)
+			return fmt::format("fmr/fneg payload or PS1 differs value={}", i);
+	}
+	return {};
+}
+
+std::string ValidateFloatingAbs(const PPCInterpreter_t& state, MPTR)
+{
+	for (size_t i = 0; i < 8; ++i)
+	{
+		const uint64 positive = PPCRecompilerTestValues::kSignValues[i] & 0x7FFFFFFFFFFFFFFFULL;
+		if (state.fpr[i + 9].fp0int != positive || state.fpr[i + 17].fp0int != (positive | 0x8000000000000000ULL) ||
+			state.fpr[i + 9].fp1int != 0x4004000000000000ULL || state.fpr[i + 17].fp1int != 0xC008000000000000ULL)
+			return fmt::format("fabs/fnabs payload or PS1 differs value={}", i);
+	}
+	return {};
+}
+
+std::string ValidateFloatingRound(const PPCInterpreter_t& state, MPTR)
+{
+	for (size_t i = 0; i < 8; ++i)
+	{
+		const uint64 expected = PPCRecompilerTestValues::kRoundedSingleValues[i].expectedDouble;
+		if (state.fpr[i + 9].fp0int != expected || state.fpr[i + 9].fp1int != expected)
+			return fmt::format("frsp nearest-even/PS1 differs value={}", i);
 	}
 	return {};
 }
@@ -1220,7 +1309,11 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 
 	const MPTR codeAddress = allocation.GetMPTR();
 	const MPTR dataAddress = codeAddress + kTestDataOffset;
-	const std::array<DifferentialCase, 19> cases{
+	// Keep the baseline and published-invalidation witnesses independent of
+	// the per-game option, including their failure paths. Only the isolated,
+	// unpublished instrumentation witness below embeds counter pointers.
+	PPCRecompiler_ResetEntryProfileForTests(false);
+	const std::array<DifferentialCase, 22> cases{
 		DifferentialCase{"integer-cr-rotate", kIntegerCode, SetupNoState, nullptr, ValidateInteger, false},
 		DifferentialCase{"conditional-branch", kBranchCode, SetupNoState, nullptr, ValidateBranch, false},
 		DifferentialCase{"load-store-endian", kLoadStoreCode, SetupLoadStore, PrepareLoadStoreMemory, ValidateLoadStore, true},
@@ -1240,6 +1333,9 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 		DifferentialCase{"stfs-single-precision-dataflow", kSingleStoreRoundedCode, SetupSingleStoreRounded, PrepareSingleStoreMemory, ValidateSingleStoreRounded, false},
 		DifferentialCase{"stfs-branch-merge-rounded", kSingleStoreBranchCode, SetupSingleStoreRounded, PrepareSingleStoreMemory, ValidateSingleStoreBranch, true},
 		DifferentialCase{"stfs-branch-merge-double", kSingleStoreBranchCode, SetupSingleStoreBranchDouble, PrepareSingleStoreMemory, ValidateSingleStoreBranch, true},
+		DifferentialCase{"floating-sign-payload-alias", kFloatingSignCode, SetupFloatingSign, nullptr, ValidateFloatingSign, false},
+		DifferentialCase{"floating-abs-payload-ps1", kFloatingAbsCode, SetupFloatingSign, nullptr, ValidateFloatingAbs, false},
+		DifferentialCase{"frsp-nearest-even-boundaries", kFloatingRoundCode, SetupFloatingRound, nullptr, ValidateFloatingRound, false},
 	};
 
 	uint32 passedCount = 0;
@@ -1257,6 +1353,21 @@ void PPCRecompiler_RunAArch64DifferentialTests()
 		fcmpoFallback, mcrfsFallback, fctiwFallback, fctiwRounding);
 	RunPublishedInvalidationCase(codeAddress);
 	RunConcurrentInvalidationCase(codeAddress, dataAddress);
+	// All preceding synthetic mappings have been reclaimed. Exercise native
+	// instrumentation even when the user's per-game option is disabled.
+	PPCRecompiler_ResetEntryProfileForTests(true);
+	bool profilePassed = true;
+	for (const auto setup : {SetupNoState, SetupCore1, SetupCore2})
+		profilePassed = RunCase(DifferentialCase{"entry-profile-state-preservation", kIntegerCode, setup, nullptr, ValidateInteger, false}, codeAddress, dataAddress) && profilePassed;
+	if (auto* counters = PPCRecompiler_GetEntryProfileCounters(codeAddress))
+	{
+		for (const auto& core : counters->cores)
+			profilePassed = core.executions == 1 && profilePassed;
+	}
+	else
+		profilePassed = false;
+	cemuLog_log(LogType::Force, "JIT PPC entry profile selftest: result={} cores=3 stateCompared=true", profilePassed ? "PASS" : "FAIL");
+	PPCRecompiler_ResetEntryProfileForTests(false);
 	RPLLoader_ReleaseCodeCaveMem(allocation);
 
 	cemuLog_log(LogType::Force, "JIT ARM64 differential: result={} passed={} failed={} total={}",

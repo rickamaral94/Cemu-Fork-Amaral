@@ -91,6 +91,12 @@ fun GameProfileEditScreen(
             onChoiceChanged = { threadQuantum ->
                 NativeGameTitles.setThreadQuantumForTitle(titleId, threadQuantum)
             })
+        Toggle(
+            label = tr("CPU execution diagnostics"),
+            description = tr("Record frequently executed CPU addresses for diagnostics. May reduce performance. Restart the game after changing this option."),
+            initialCheckedState = { NativeGameTitles.isPPCEntryProfilingForTitleEnabled(titleId) },
+            onCheckedChanged = { NativeGameTitles.setPPCEntryProfilingForTitleEnabled(titleId, it) },
+        )
         if (supportsLoadingCustomDrivers) {
             SingleSelection(
                 label = tr("Custom driver"),

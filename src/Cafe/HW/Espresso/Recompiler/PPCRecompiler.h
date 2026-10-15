@@ -1,5 +1,13 @@
 #pragma once
 #include <boost/container/small_vector.hpp>
+namespace PPCExecutionProfile { struct EntryCounters; }
+
+PPCExecutionProfile::EntryCounters* PPCRecompiler_GetEntryProfileCounters(uint32 ppcAddress);
+#ifdef CEMU_ENABLE_JIT_DIFFERENTIAL_TESTS
+// Only before the compiler worker and title CPUs start; synthetic code must
+// have been reclaimed before resetting the table.
+void PPCRecompiler_ResetEntryProfileForTests(bool enabled);
+#endif
 
 #define PPC_REC_CODE_AREA_START		(0x00000000) // lower bound of executable memory area. Recompiler expects this address to be 0
 #define PPC_REC_CODE_AREA_END		(0x10000000) // upper bound of executable memory area
