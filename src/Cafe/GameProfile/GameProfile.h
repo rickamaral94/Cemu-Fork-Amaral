@@ -46,6 +46,8 @@ public:
 	void SetThreadQuantum(uint32 threadQuantum){ m_threadQuantum = threadQuantum; }
 	[[nodiscard]] const std::optional<CPUMode>& GetCPUMode() const { return m_cpuMode; }
 	void SetCPUMode(CPUMode cpuMode) { m_cpuMode = cpuMode; }
+	[[nodiscard]] bool IsPPCEntryProfilingEnabled() const { return m_ppcEntryProfiling; }
+	void SetPPCEntryProfilingEnabled(bool enabled) { m_ppcEntryProfiling = enabled; }
 
 	[[nodiscard]] bool IsAudioDisabled() const { return m_disableAudio; }
 
@@ -99,6 +101,7 @@ private:
 	// cpu settings
 	uint32 m_threadQuantum = kThreadQuantumDefault; // values: 20000 45000 60000 80000 100000
 	std::optional<CPUMode> m_cpuMode{}; // = CPUModeOption::kSingleCoreRecompiler;
+	bool m_ppcEntryProfiling = false;
 	// audio
 	bool m_disableAudio = false;
 	// controller settings

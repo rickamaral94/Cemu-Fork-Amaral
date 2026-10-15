@@ -38,6 +38,12 @@ object NativeGameTitles {
     @JvmStatic
     external fun setCpuModeForTitle(gameTitleId: Long, cpuMode: Int)
 
+    @JvmStatic
+    external fun isPPCEntryProfilingForTitleEnabled(gameTitleId: Long): Boolean
+
+    @JvmStatic
+    external fun setPPCEntryProfilingForTitleEnabled(gameTitleId: Long, enabled: Boolean)
+
     val THREAD_QUANTUM_VALUES = listOf(
         20000,
         45000,

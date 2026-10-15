@@ -5,6 +5,32 @@
 
 namespace PPCRecompilerTestValues
 {
+// Bit transport/sign operations must preserve all remaining payload bits.
+inline constexpr std::array<uint64_t, 8> kSignValues{
+	0x0000000000000000ULL, 0x8000000000000000ULL,
+	0x7FF0000000000000ULL, 0xFFF0000000000000ULL,
+	0x7FF8002460000000ULL, 0xFFF0002460000000ULL,
+	0x0000000000000001ULL, 0x8000000000000001ULL,
+};
+
+struct RoundedSingleValue
+{
+	uint64_t input;
+	uint64_t expectedDouble;
+};
+
+// IEEE nearest-even boundaries with normal results (no host FTZ dependency).
+inline constexpr std::array<RoundedSingleValue, 8> kRoundedSingleValues{
+	RoundedSingleValue{0x3FF0000010000000ULL, 0x3FF0000000000000ULL}, // halfway, even lower
+	RoundedSingleValue{0x3FF0000030000000ULL, 0x3FF0000040000000ULL}, // halfway, even upper
+	RoundedSingleValue{0xBFF0000010000000ULL, 0xBFF0000000000000ULL},
+	RoundedSingleValue{0xBFF0000030000000ULL, 0xBFF0000040000000ULL},
+	RoundedSingleValue{0x0000000000000000ULL, 0x0000000000000000ULL},
+	RoundedSingleValue{0x8000000000000000ULL, 0x8000000000000000ULL},
+	RoundedSingleValue{0x47EFFFFFE0000000ULL, 0x47EFFFFFE0000000ULL}, // max finite single
+	RoundedSingleValue{0xC7EFFFFFE0000000ULL, 0xC7EFFFFFE0000000ULL},
+};
+
 struct SingleStoreValue
 {
 	uint64_t input;

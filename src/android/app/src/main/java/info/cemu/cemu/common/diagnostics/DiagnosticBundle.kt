@@ -21,6 +21,7 @@ data class DiagnosticReport(
     val settings: DiagnosticSettingsInfo,
     val log: DiagnosticLogInfo,
     val session: Map<String, String> = emptyMap(),
+    val ppcEntryProfile: PpcEntryProfile = PpcEntryProfile(),
     val performance: PerformanceSessionSummary = PerformanceSessionSummary(0, gpuCoveragePct = 0.0, totalFrames = 0, totalQueueSubmits = 0, totalPresentCalls = 0, totalSwapchainRecreates = 0, droppedSamples = 0),
 )
 

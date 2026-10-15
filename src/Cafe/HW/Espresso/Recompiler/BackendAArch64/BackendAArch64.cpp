@@ -9,6 +9,7 @@
 #include <cstddef>
 
 #include "../PPCRecompiler.h"
+#include "../PPCExecutionProfile.h"
 #include "Common/precompiled.h"
 #include "Common/cpu_features.h"
 #include "HW/Espresso/Interpreter/PPCInterpreterInternal.h"
@@ -1506,6 +1507,21 @@ bool PPCRecompiler_generateAArch64Code(struct PPCRecFunction_t* PPCRecFunction, 
 		segIt->x64Offset = aarch64GenContext.getSize();
 
 		aarch64GenContext.storeSegmentStart(segIt);
+		if (segIt->isEnterable)
+		{
+			if (auto* counters = PPCRecompiler_GetEntryProfileCounters(segIt->enterPPCAddress))
+			{
+				// Reserved scratch registers; non-S instructions preserve NZCV.
+				// Each virtual core owns one cache line. Read only at shutdown.
+				aarch64GenContext.mov(TEMP_GPR1.XReg, reinterpret_cast<uint64>(counters->cores.data()));
+				aarch64GenContext.ldr(TEMP_GPR2.WReg, AdrUimm(HCPU_REG, offsetof(PPCInterpreter_t, spr.UPIR)));
+				aarch64GenContext.lsl(TEMP_GPR2.XReg, TEMP_GPR2.XReg, 6);
+				aarch64GenContext.add(TEMP_GPR1.XReg, TEMP_GPR1.XReg, TEMP_GPR2.XReg);
+				aarch64GenContext.ldr(TEMP_GPR2.XReg, AdrUimm(TEMP_GPR1.XReg));
+				aarch64GenContext.add(TEMP_GPR2.XReg, TEMP_GPR2.XReg, 1);
+				aarch64GenContext.str(TEMP_GPR2.XReg, AdrUimm(TEMP_GPR1.XReg));
+			}
+		}
 
 		for (size_t i = 0; i < segIt->imlList.size(); i++)
 		{

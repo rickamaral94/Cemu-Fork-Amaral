@@ -214,6 +214,21 @@ Java_info_cemu_cemu_nativeinterface_NativeGameTitles_setLoadingSharedLibrariesFo
 	NativeGameTitles::s_currentGameProfile.Save(game_title_id);
 }
 
+extern "C" [[maybe_unused]] JNIEXPORT jboolean JNICALL
+Java_info_cemu_cemu_nativeinterface_NativeGameTitles_isPPCEntryProfilingForTitleEnabled([[maybe_unused]] JNIEnv* env, [[maybe_unused]] jclass clazz, jlong game_title_id)
+{
+	NativeGameTitles::LoadGameProfile(game_title_id);
+	return NativeGameTitles::s_currentGameProfile.IsPPCEntryProfilingEnabled();
+}
+
+extern "C" [[maybe_unused]] JNIEXPORT void JNICALL
+Java_info_cemu_cemu_nativeinterface_NativeGameTitles_setPPCEntryProfilingForTitleEnabled([[maybe_unused]] JNIEnv* env, [[maybe_unused]] jclass clazz, jlong game_title_id, jboolean enabled)
+{
+	NativeGameTitles::LoadGameProfile(game_title_id);
+	NativeGameTitles::s_currentGameProfile.SetPPCEntryProfilingEnabled(enabled);
+	NativeGameTitles::s_currentGameProfile.Save(game_title_id);
+}
+
 extern "C" [[maybe_unused]] JNIEXPORT jint JNICALL
 Java_info_cemu_cemu_nativeinterface_NativeGameTitles_getCpuModeForTitle([[maybe_unused]] JNIEnv* env, [[maybe_unused]] jclass clazz, jlong game_title_id)
 {

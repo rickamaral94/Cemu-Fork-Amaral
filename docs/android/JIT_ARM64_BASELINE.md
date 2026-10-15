@@ -69,7 +69,7 @@ há instrumentação adicionada ao caminho que executa cada bloco recompilado.
 
 ## Testes diferenciais da nightly
 
-Builds nightly executam dezenove casos sintéticos isolados antes do início do
+Builds nightly executam vinte e dois casos sintéticos isolados antes do início do
 título. Cada caso parte do mesmo estado, roda uma vez no interpretador e uma vez
 no JIT AArch64 e compara o estado arquitetural resultante. A cobertura inicial
 inclui:
@@ -115,9 +115,17 @@ Dois novos casos, `record-cr0-so-set` e `record-cr0-so-clear`, partem de CR0[SO]
 oposto ao XER e capturam o CR após `add.`, `xor.`, `andi.`, `divw.` e `divwu.`.
 Os resultados cobrem LT/GT/EQ, comparação com sinal do quociente unsigned e
 preservação de CR0 por um `add` sem Rc. XER[SO] deve permanecer inalterado.
-O novo gate físico é `passed=19 failed=0 total=19`; permanece pendente até
-receber o diagnóstico do APK corrigido. Nenhuma melhoria de FPS é atribuída
-a essa correção de semântica.
+O gate `passed=19 failed=0 total=19` foi confirmado pelo diagnóstico de
+2026-10-06 da build `998e73fd-nightly`, Wind Waker HD, Odin2 Portal e Turnip
+v4.7.4.1. Invalidações passaram e todas as 13.586 funções publicadas foram
+reclamadas. Nenhuma melhoria de FPS é atribuída a essa correção de semântica.
+
+A etapa de pesquisa de 2026-10-15 amplia o gate para 22/22 com payloads e
+sinais de `fmr/fneg/fabs/fnabs`, preservação de PS1 e empates nearest-even de
+`frsp`. Acrescenta um autoteste separado da instrumentação nativa nos três
+núcleos virtuais e contadores opcionais de entradas PPC por título. A validação
+física dessa nova etapa permanece pendente. Escopo, método e limites:
+`docs/android/PPC_RECOMPILER_RESEARCH.md`.
 
 O código sintético usa uma pequena alocação temporária no code cave, nunca é
 publicado na tabela de saltos do jogo e é liberado antes de o título começar. Os

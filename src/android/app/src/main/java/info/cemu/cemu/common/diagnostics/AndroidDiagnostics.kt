@@ -111,6 +111,7 @@ suspend fun createAndroidDiagnosticBundle(context: Context): Result<File> =
                 ),
                 session = session + mapOf("configurationCapturedAtUtc" to (snapshot?.capturedAtUtc ?: "unavailable")),
                 performance = performanceExport.summary,
+                ppcEntryProfile = extractPpcEntryProfile(logText),
             )
 
             val diagnosticDirectory = context.internalFolder().resolve(DIAGNOSTIC_DIRECTORY)

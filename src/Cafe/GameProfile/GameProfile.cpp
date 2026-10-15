@@ -252,6 +252,7 @@ bool GameProfile::Load(uint64_t title_id)
 		}
 		else if (boost::iequals(iniParser.GetCurrentSectionName(), "CPU"))
 		{
+			gameProfile_loadBooleanOption2(iniParser, "ppcEntryProfiling", m_ppcEntryProfiling);
 			gameProfile_loadIntegerOption(iniParser, "threadQuantum", m_threadQuantum, 1000U, 536870912U);
 			if (!gameProfile_loadEnumOption(iniParser, "cpuMode", m_cpuMode))
 			{
@@ -318,6 +319,7 @@ void GameProfile::Save(uint64_t title_id)
 	fs->writeLine("[CPU]");
 	WRITE_OPTIONAL_ENTRY(cpuMode);
 	WRITE_ENTRY(threadQuantum);
+	WRITE_ENTRY(ppcEntryProfiling);
 	fs->writeLine("");
 
 	fs->writeLine("[Graphics]");
@@ -373,6 +375,7 @@ void GameProfile::ResetOptional()
 	// cpu settings
 	m_threadQuantum = kThreadQuantumDefault;
 	m_cpuMode.reset(); // CPUModeOption::kSingleCoreRecompiler;
+	m_ppcEntryProfiling = false;
 	// audio
 	m_disableAudio = false;
 	// controller settings
@@ -399,6 +402,7 @@ void GameProfile::Reset()
 	// cpu settings
 	m_threadQuantum = kThreadQuantumDefault;
 	m_cpuMode = CPUMode::Auto;
+	m_ppcEntryProfiling = false;
 	// audio
 	m_disableAudio = false;
 	// controller settings
